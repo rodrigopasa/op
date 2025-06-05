@@ -265,7 +265,7 @@ class DatabaseManager:
         self.connection_params = self._parse_database_url()
     
     def _parse_database_url(self) -> Optional[dict]:
-        """Parse da URL do banco de dados com tratamento de erro melhorado e porta padrão 9898 se ausente"""
+        """Parse da URL do banco de dados com tratamento de erro melhorado e porta padrão 9898 se ausente ou inválida"""
         db_url = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", "")
         if not db_url:
             logger.warning("DATABASE_URL não encontrada")
@@ -273,14 +273,15 @@ class DatabaseManager:
         try:
             # Parse da URL do banco
             parsed = urlparse(db_url)
-            # Extrair porta e definir padrão 9898 se ausente
-            port_value = parsed.port
-            if port_value is None:
+            # Extração da porta de forma robusta
+            port_str = parsed.port
+            if port_str is None:
                 port = 9898
-            elif isinstance(port_value, str):
-                port = int(port_value)
             else:
-                port = port_value
+                try:
+                    port = int(port_str)
+                except (TypeError, ValueError):
+                    port = 9898
             # Montar os parâmetros de conexão
             params = {
                 'host': parsed.hostname,
@@ -298,6 +299,7 @@ class DatabaseManager:
             logger.error(f"Erro ao fazer parse da DATABASE_URL: {e}")
             st.error(f"❌ Erro na configuração do banco: {e}")
             return None
+
 
     @contextmanager
     def get_connection(self):
