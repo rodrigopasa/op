@@ -45,23 +45,23 @@ try:
 except:
     st.warning("OCR não disponível. Upload de imagens pode não funcionar.")
 
-# Configuração de autenticação
-names = ["Hisoka"]
-usernames = ["Hisoka"]
-passwords = ["$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"]  # hash de "Hisoka123#"
-
-# Criar autenticador
-authenticator = stauth.Authenticate(
-    credentials={
+# Configuração de autenticação - NOVA SINTAXE
+credentials = {
+    "credentials": {
         "usernames": {
-            usernames[0]: {
-                "name": names[0],
-                "password": passwords[0]
+            "Hisoka": {
+                "name": "Hisoka",
+                "password": "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"  # hash de "Hisoka123#"
             }
         }
-    },
-    cookie_name="chat_arquivos_cookie",
-    key=AUTH_KEY,
+    }
+}
+
+# Criar autenticador com a nova sintaxe
+authenticator = stauth.Authenticate(
+    credentials,
+    "chat_arquivos_cookie",
+    AUTH_KEY,
     cookie_expiry_days=30
 )
 
@@ -108,11 +108,12 @@ def processar_arquivo(file):
     """Processa um único arquivo e retorna documentos"""
     documentos = []
     ext = file.name.split(".")[-1].lower()
-
+    
+    # Criar arquivo temporário
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
         tmp.write(file.read())
         tmp_path = tmp.name
-
+    
     try:
         if ext == "pdf":
             loader = PyMuPDFLoader(tmp_path)
@@ -134,76 +135,85 @@ def processar_arquivo(file):
     except Exception as e:
         st.error(f"❌ Erro em {file.name}: {str(e)}")
     finally:
+        # Limpar arquivo temporário
         try:
             os.remove(tmp_path)
         except:
             pass
-
+    
     return documentos
 
 def criar_vectorstore(documentos):
     """Cria vectorstore a partir dos documentos"""
     if not documentos:
         return None
-
+    
+    # Dividir documentos em chunks
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
     chunks = splitter.split_documents(documentos)
-
+    
+    # Criar embeddings e vectorstore
     embeddings = OpenAIEmbeddings()
     vectorstore = FAISS.from_documents(chunks, embeddings)
-
+    
     return vectorstore
 
 # Interface lateral
 with st.sidebar:
     st.header("💬 Gerenciar Sessões")
-
+    
+    # Seletor de sessões
     if st.session_state.sessoes:
         sessao_selecionada = st.selectbox(
             "Sessão ativa:",
             options=list(st.session_state.sessoes.keys()),
             index=list(st.session_state.sessoes.keys()).index(st.session_state.sessao_atual)
         )
-
+        
         if sessao_selecionada != st.session_state.sessao_atual:
             st.session_state.sessao_atual = sessao_selecionada
             st.rerun()
-
+    
+    # Botão nova sessão
     if st.button("➕ Nova Sessão", use_container_width=True):
         criar_nova_sessao()
-
+    
     st.divider()
-
+    
+    # Upload de arquivos
     st.header("📤 Carregar Arquivos")
     uploaded_files = st.file_uploader(
         "Escolha os arquivos",
         type=["pdf", "docx", "doc", "csv", "png", "jpg", "jpeg"],
         accept_multiple_files=True
     )
-
+    
     if uploaded_files:
         if st.button("🔄 Processar Arquivos", use_container_width=True):
             with st.spinner("Processando..."):
                 todos_docs = []
-
+                
+                # Processar cada arquivo
                 for file in uploaded_files:
                     docs = processar_arquivo(file)
                     todos_docs.extend(docs)
-
+                
                 if todos_docs:
+                    # Criar vectorstore
                     vectorstore = criar_vectorstore(todos_docs)
                     st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = vectorstore
                     st.success(f"✅ {len(todos_docs)} documentos processados!")
                 else:
                     st.error("❌ Nenhum documento foi processado")
-
+    
+    # Status e reset
     st.divider()
     vectorstore_atual = st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"]
-
+    
     if vectorstore_atual:
         st.success("✅ Documentos carregados")
         if st.button("🗑️ Limpar Tudo", use_container_width=True):
@@ -216,6 +226,7 @@ with st.sidebar:
 # Área principal - Chat
 st.header("💬 Chat")
 
+# Mostrar histórico
 historico = st.session_state.sessoes[st.session_state.sessao_atual]["historico"]
 for pergunta, resposta in historico:
     with st.chat_message("user"):
@@ -223,43 +234,53 @@ for pergunta, resposta in historico:
     with st.chat_message("assistant"):
         st.write(resposta)
 
+# Input de pergunta
 pergunta = st.chat_input("Digite sua pergunta...")
 
 if pergunta:
+    # Adicionar pergunta ao chat
     with st.chat_message("user"):
         st.write(pergunta)
-
+    
+    # Processar resposta
     with st.chat_message("assistant"):
         with st.spinner("Pensando..."):
             try:
                 vectorstore = st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"]
-
+                
                 if vectorstore:
+                    # Chat com documentos
                     retriever = vectorstore.as_retriever(
                         search_type="similarity",
                         search_kwargs={"k": 3}
                     )
-
+                    
+                    # Criar chain
                     llm = ChatOpenAI(temperature=0, model_name="gpt-4")
                     memory = ConversationBufferMemory(
                         memory_key="chat_history",
                         return_messages=True
                     )
-
+                    
                     chain = ConversationalRetrievalChain.from_llm(
                         llm=llm,
                         retriever=retriever,
                         memory=memory,
                         verbose=False
                     )
-
+                    
+                    # Obter resposta
                     resposta = chain({"question": pergunta})["answer"]
                 else:
+                    # Chat sem documentos
                     llm = ChatOpenAI(temperature=0, model_name="gpt-4")
                     resposta = llm.predict(pergunta)
-
+                
+                # Mostrar resposta
                 st.write(resposta)
+                
+                # Adicionar ao histórico
                 historico.append((pergunta, resposta))
-
+                
             except Exception as e:
                 st.error(f"❌ Erro: {str(e)}")
