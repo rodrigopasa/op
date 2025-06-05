@@ -10,3 +10,4 @@ pymupdf
 python-docx
 faiss-cpu
 tiktoken
+bcrypt
