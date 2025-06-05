@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit_authenticator as stauth
+import hashlib
 import os
 import tempfile
 from PIL import Image
@@ -21,64 +21,83 @@ except ImportError:
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
-from langchain.docstore.document import Document
+from langchain.schema import Document
 
 # Configuração inicial
 st.set_page_config(page_title="Chat com Arquivos", layout="wide")
-st.title("📚 Chat com Arquivos + Memória de Sessão")
 
 # Carregar variáveis de ambiente
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
 TESSERACT_PATH = os.environ.get("TESSERACT_PATH") or st.secrets.get("TESSERACT_PATH", "/usr/bin/tesseract")
-AUTH_KEY = os.environ.get("AUTH_KEY") or st.secrets.get("AUTH_KEY", "chave_padrao_123")
 
 # Configurar API Key do OpenAI
-if not OPENAI_API_KEY:
-    st.error("⚠️ OPENAI_API_KEY não encontrada. Configure nas variáveis de ambiente.")
-    st.stop()
-
-os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+if OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
 # Configurar Tesseract se disponível
 try:
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 except:
-    st.warning("OCR não disponível. Upload de imagens pode não funcionar.")
+    pass
 
-# Configuração de autenticação - ESTRUTURA CORRETA
-credentials = {
-    "usernames": {
-        "Hisoka": {
-            "name": "Hisoka",
-            "password": "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"  # hash de "Hisoka123#"
-        }
-    }
-}
+# Sistema de autenticação simples
+def check_password():
+    """Retorna True se o usuário inseriu a senha correta."""
+    
+    def password_entered():
+        """Verifica se a senha inserida está correta."""
+        if (st.session_state["username"] == "Hisoka" and 
+            st.session_state["password"] == "Hisoka123#"):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Remove a senha da sessão
+            del st.session_state["username"]
+        else:
+            st.session_state["password_correct"] = False
 
-# Criar autenticador
-authenticator = stauth.Authenticate(
-    credentials,
-    "chat_arquivos_cookie",
-    AUTH_KEY,
-    cookie_expiry_days=30
-)
+    # Primeira execução ou logout
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
 
-# Login
-name, authentication_status, username = authenticator.login()
+    # Se ainda não está autenticado
+    if not st.session_state["password_correct"]:
+        # Formulário de login
+        st.title("🔐 Login")
+        with st.form("login_form"):
+            st.text_input("Usuário", key="username")
+            st.text_input("Senha", type="password", key="password")
+            st.form_submit_button("Entrar", on_click=password_entered)
+            
+        if "password_correct" in st.session_state and st.session_state["password_correct"] == False:
+            st.error("😕 Usuário ou senha incorretos")
+            
+        return False
+    
+    return True
 
-if authentication_status == False:
-    st.error("❌ Usuário ou senha incorretos")
+# Função de logout
+def logout():
+    st.session_state["password_correct"] = False
+    st.rerun()
+
+# Verificar autenticação
+if not check_password():
     st.stop()
-elif authentication_status == None:
-    st.warning("⚠️ Por favor, insira seu nome de usuário e senha")
-    st.stop()
 
-# Interface após login bem-sucedido
+# Interface principal após login
+st.title("📚 Chat com Arquivos + Memória de Sessão")
+
+# Botão de logout no canto superior direito
 col1, col2 = st.columns([6, 1])
 with col1:
-    st.success(f"✅ Bem-vindo, {name}!")
+    st.success("✅ Bem-vindo, Hisoka!")
 with col2:
-    authenticator.logout()
+    if st.button("🚪 Sair"):
+        logout()
+
+# Verificar se a API Key está configurada
+if not OPENAI_API_KEY:
+    st.error("⚠️ OPENAI_API_KEY não encontrada. Configure nas variáveis de ambiente.")
+    st.stop()
 
 # Inicializar estado da sessão
 if "sessoes" not in st.session_state:
@@ -128,8 +147,8 @@ def processar_arquivo(file):
                 text = pytesseract.image_to_string(image)
                 if text.strip():
                     documentos = [Document(page_content=text, metadata={"source": file.name})]
-            except:
-                st.warning(f"⚠️ OCR falhou para {file.name}")
+            except Exception:
+                st.warning(f"⚠️ OCR não disponível para {file.name}")
     except Exception as e:
         st.error(f"❌ Erro em {file.name}: {str(e)}")
     finally:
@@ -146,19 +165,23 @@ def criar_vectorstore(documentos):
     if not documentos:
         return None
     
-    # Dividir documentos em chunks
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        length_function=len
-    )
-    chunks = splitter.split_documents(documentos)
-    
-    # Criar embeddings e vectorstore
-    embeddings = OpenAIEmbeddings()
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    
-    return vectorstore
+    try:
+        # Dividir documentos em chunks
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len
+        )
+        chunks = splitter.split_documents(documentos)
+        
+        # Criar embeddings e vectorstore
+        embeddings = OpenAIEmbeddings()
+        vectorstore = FAISS.from_documents(chunks, embeddings)
+        
+        return vectorstore
+    except Exception as e:
+        st.error(f"Erro ao criar vectorstore: {str(e)}")
+        return None
 
 # Interface lateral
 with st.sidebar:
@@ -187,7 +210,8 @@ with st.sidebar:
     uploaded_files = st.file_uploader(
         "Escolha os arquivos",
         type=["pdf", "docx", "doc", "csv", "png", "jpg", "jpeg"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key=f"uploader_{st.session_state.sessao_atual}"
     )
     
     if uploaded_files:
@@ -203,14 +227,15 @@ with st.sidebar:
                 if todos_docs:
                     # Criar vectorstore
                     vectorstore = criar_vectorstore(todos_docs)
-                    st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = vectorstore
-                    st.success(f"✅ {len(todos_docs)} documentos processados!")
+                    if vectorstore:
+                        st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = vectorstore
+                        st.success(f"✅ {len(todos_docs)} documentos processados!")
                 else:
                     st.error("❌ Nenhum documento foi processado")
     
     # Status e reset
     st.divider()
-    vectorstore_atual = st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"]
+    vectorstore_atual = st.session_state.sessoes[st.session_state.sessao_atual].get("vectorstore")
     
     if vectorstore_atual:
         st.success("✅ Documentos carregados")
@@ -244,7 +269,7 @@ if pergunta:
     with st.chat_message("assistant"):
         with st.spinner("Pensando..."):
             try:
-                vectorstore = st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"]
+                vectorstore = st.session_state.sessoes[st.session_state.sessao_atual].get("vectorstore")
                 
                 if vectorstore:
                     # Chat com documentos
