@@ -1,10 +1,11 @@
 import streamlit as st
-import hashlib
 import os
 import tempfile
 from PIL import Image
 import pytesseract
 from datetime import datetime
+import psycopg2
+from psycopg2 import sql
 
 # Importações do langchain
 try:
@@ -28,7 +29,8 @@ st.set_page_config(page_title="Chat com Arquivos", layout="wide")
 
 # Carregar variáveis de ambiente
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
-TESSERACT_PATH = os.environ.get("TESSERACT_PATH") or st.secrets.get("TESSERACT_PATH", "/usr/bin/tesseract")
+TESSERACT_PATH = os.environ.get("TESSERACT_PATH") or st.secrets.get("TESSERACT_PATH", "")
+DB_CONNECTION = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", "")
 
 # Configurar API Key do OpenAI
 if OPENAI_API_KEY:
@@ -39,6 +41,22 @@ try:
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 except:
     pass
+
+# Função de conexão com o banco de dados
+def get_db_connection():
+    return psycopg2.connect(DB_CONNECTION)
+
+# Função para inserir arquivos no banco de dados
+def insert_file_to_db(filename, filedata):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        sql.SQL("INSERT INTO file_storage (filename, filedata) VALUES (%s, %s)"),
+        (filename, psycopg2.Binary(filedata))
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
 
 # Sistema de autenticação simples
 def check_password():
@@ -221,6 +239,10 @@ with st.sidebar:
                 
                 # Processar cada arquivo
                 for file in uploaded_files:
+                    # Armazenar no banco de dados
+                    insert_file_to_db(file.name, file.read())
+                    
+                    # Processar arquivo
                     docs = processar_arquivo(file)
                     todos_docs.extend(docs)
                 
