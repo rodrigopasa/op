@@ -20,11 +20,9 @@ st.set_page_config(page_title="Chat com Arquivos", layout="wide")
 st.title("📚 Chat com Arquivos + Memória de Sessão")
 
 # Carregar variáveis secrets
+# Carregar a variável de ambiente
+DATABASE_URL = st.secrets["DATABASE_URL"]
 API_KEY = st.secrets["OPENAI_API_KEY"]
-POSTGRES_HOST = st.secrets["POSTGRES_HOST"]
-POSTGRES_DB = st.secrets["POSTGRES_DB"]
-POSTGRES_USER = st.secrets["POSTGRES_USER"]
-POSTGRES_PASSWORD = st.secrets["POSTGRES_PASSWORD"]
 TESSERACT_PATH = st.secrets["TESSERACT_PATH"]
 
 # Configurar o caminho do Tesseract
