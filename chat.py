@@ -264,41 +264,43 @@ class DatabaseManager:
     def __init__(self):
         self.connection_params = self._parse_database_url()
     
-    def _parse_database_url(self) -> Optional[dict]:
-        """Parse da URL do banco de dados com tratamento de erro melhorado e porta padrão 9898 se ausente ou inválida"""
-        db_url = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", "")
-        if not db_url:
-            logger.warning("DATABASE_URL não encontrada")
-            return None
-        try:
-            # Parse da URL do banco
-            parsed = urlparse(db_url)
-            # Extração da porta de forma robusta
-            port_str = parsed.port
-            if port_str is None:
-                port = 9898
-            else:
-                try:
-                    port = int(port_str)
-                except (TypeError, ValueError):
-                    port = 9898
-            # Montar os parâmetros de conexão
-            params = {
-                'host': parsed.hostname,
-                'port': port,
-                'database': parsed.path.lstrip('/'),
-                'user': parsed.username,
-                'password': parsed.password
-            }
-            # Validar parâmetros essenciais
-            if not all([params['host'], params['database'], params['user']]):
-                raise ValueError("Parâmetros de conexão incompletos")
-            logger.info(f"Conexão configurada para: {params['host']}:{params['port']}/{params['database']}")
-            return params
-        except Exception as e:
-            logger.error(f"Erro ao fazer parse da DATABASE_URL: {e}")
-            st.error(f"❌ Erro na configuração do banco: {e}")
-            return None
+  def _parse_database_url(self) -> Optional[dict]:
+    """
+    Parse da URL do banco de dados com tratamento de erro melhorado.
+    Se a variável de ambiente ou secret DATABASE_URL não estiver definida,
+    usará o valor padrão informado.
+    """
+    default_db_url = ("postgres://postgres:kNL6exzv6Y3HYomX4Etgpb2fqtatWIuzKh5OYozkM9NkayOywHe1i1jfyvijgS3G"
+                      "@185.173.110.61:9898/postgres")
+    # Tenta obter a URL do ambiente ou secrets; se não encontrar, usa o default
+    db_url = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", default_db_url)
+    
+    if not db_url:
+        logger.warning("DATABASE_URL não encontrada")
+        return None
+    try:
+        parsed = urlparse(db_url)
+        # Extrair a porta; se não estiver definida, usar 9898
+        port = parsed.port or 9898
+
+        params = {
+            'host': parsed.hostname,
+            'port': int(port),
+            'database': parsed.path.lstrip('/'),
+            'user': parsed.username,
+            'password': parsed.password
+        }
+        # Validar parâmetros essenciais
+        if not all([params['host'], params['database'], params['user']]):
+            raise ValueError("Parâmetros de conexão incompletos")
+        
+        logger.info(f"Conexão configurada para: {params['host']}:{params['port']}/{params['database']}")
+        return params
+    except Exception as e:
+        logger.error(f"Erro ao fazer parse da DATABASE_URL: {e}")
+        st.error(f"❌ Erro na configuração do banco: {e}")
+        return None
+
 
 
     @contextmanager
