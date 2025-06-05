@@ -28,7 +28,7 @@ POSTGRES_PASSWORD = st.secrets["POSTGRES_PASSWORD"]
 TESSERACT_PATH = st.secrets["TESSERACT_PATH"]
 
 # Configurar o caminho do Tesseract
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"
 
 # Autenticação
 names = ["Admin"]
