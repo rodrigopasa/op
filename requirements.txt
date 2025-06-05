@@ -1,6 +1,6 @@
 streamlit
 langchain
-langchain_community
+langchain-community
 psycopg2-binary
 pytesseract
 Pillow
