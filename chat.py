@@ -308,7 +308,7 @@ class DatabaseManager:
             # Extrair componentes
             params = {
                 'host': parsed.hostname,
-                'port': parsed.port or 5432,
+                'port': parsed.port or 9898,
                 'database': parsed.path.lstrip('/'),
                 'user': parsed.username,
                 'password': parsed.password
