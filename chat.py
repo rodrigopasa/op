@@ -6,6 +6,7 @@ import pytesseract
 from datetime import datetime
 import psycopg2
 from psycopg2 import sql
+import bcrypt  # Para hashing de senhas
 
 # Importações do langchain (tenta importar as versões da comunidade, senão as originais)
 try:
@@ -44,6 +45,52 @@ if TESSERACT_PATH:
 def get_db_connection():
     return psycopg2.connect(DB_CONNECTION)
 
+# Função para criar tabelas
+def create_tables():
+    commands = [
+        """
+        CREATE TABLE IF NOT EXISTS file_storage (
+            id SERIAL PRIMARY KEY,
+            filename VARCHAR(255) NOT NULL,
+            filedata BYTEA NOT NULL,
+            upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id SERIAL PRIMARY KEY,
+            session_id VARCHAR(255) UNIQUE NOT NULL,
+            historico JSONB,
+            vectorstore BYTEA,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    ]
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        for command in commands:
+            cur.execute(command)
+        cur.close()
+        conn.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        st.error(f"Erro ao criar tabelas: {error}")
+    finally:
+        if conn is not None:
+            conn.close()
+
+# Chame a função para criar tabelas
+create_tables()
+
 # Função para inserir arquivos no banco de dados
 def insert_file_to_db(filename, filedata):
     conn = get_db_connection()
@@ -60,7 +107,22 @@ def insert_file_to_db(filename, filedata):
         cur.close()
         conn.close()
 
-# Sistema de autenticação simples
+# Função para recuperar arquivos do banco de dados
+def get_files_from_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, filename, upload_date FROM file_storage ORDER BY upload_date DESC")
+        files = cur.fetchall()
+    except Exception as e:
+        st.error(f"Erro ao recuperar arquivos do banco: {e}")
+        files = []
+    finally:
+        cur.close()
+        conn.close()
+    return files
+
+# Função para autenticação
 def check_password():
     """Retorna True se o usuário inseriu a senha correta."""
     def password_entered():
@@ -240,15 +302,15 @@ with st.sidebar:
                     st.error("❌ Nenhum documento foi processado")
 
     st.divider()
-    vectorstore_atual = st.session_state["sessoes"][sessao_atual].get("vectorstore")
-    if vectorstore_atual:
-        st.success("✅ Documentos carregados")
-        if st.button("🗑️ Limpar Tudo", use_container_width=True):
-            st.session_state["sessoes"][sessao_atual]["vectorstore"] = None
-            st.session_state["sessoes"][sessao_atual]["historico"] = []
-            st.experimental_rerun()
+
+    # Exibir lista de arquivos carregados
+    st.header("📄 Documentos Carregados")
+    arquivos_carregados = get_files_from_db()
+    if arquivos_carregados:
+        for file_id, filename, upload_date in arquivos_carregados:
+            st.write(f"{filename} - Enviado em {upload_date}")
     else:
-        st.info("📄 Nenhum documento carregado")
+        st.info("Nenhum documento carregado.")
 
 # Área principal: chat
 st.header("💬 Chat")
