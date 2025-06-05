@@ -1,0 +1,6 @@
+streamlit
+langchain
+streamlit-authenticator
+psycopg2-binary
+pytesseract
+Pillow
