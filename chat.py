@@ -6,16 +6,13 @@ import pytesseract
 from datetime import datetime
 import psycopg2
 from psycopg2 import sql
-import bcrypt
 import json
-import pickle
-import base64
 from urllib.parse import urlparse
 import logging
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Any, Tuple
 from contextlib import contextmanager
 
-# Importações do langchain com tratamento de erro melhorado
+# LangChain imports
 try:
     from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, CSVLoader
     from langchain_community.embeddings import OpenAIEmbeddings
@@ -30,11 +27,11 @@ except ImportError as e:
     st.error(f"❌ Erro ao importar LangChain: {e}")
     LANGCHAIN_AVAILABLE = False
 
-# Configuração de logging
+# Logging config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuração da página com tema moderno
+# Page config
 st.set_page_config(
     page_title="🤖 AI Chat Assistant Pro",
     page_icon="🤖",
@@ -42,277 +39,117 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS melhorado com design mais moderno
+# CSS personalizado
 st.markdown("""
 <style>
 /* Reset e base */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-/* Variáveis CSS */
+* { margin:0; padding:0; box-sizing:border-box; }
+/* Variáveis */
 :root {
-    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --success-gradient: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
-    --warning-gradient: linear-gradient(135deg, #ff6b6b 0%, #ffa500 100%);
-    --glass-bg: rgba(255, 255, 255, 0.1);
-    --glass-border: rgba(255, 255, 255, 0.2);
-    --shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
-    --border-radius: 16px;
+  --primary-gradient: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+  --glass-bg: rgba(255,255,255,0.1);
+  --glass-border: rgba(255,255,255,0.2);
+  --shadow: 0 8px 32px rgba(31,38,135,0.37);
+  --border-radius: 16px;
 }
-/* Header principal com glassmorphism */
+/* Header */
 .main-header {
-    background: var(--primary-gradient);
-    padding: 2rem;
-    border-radius: var(--border-radius);
-    color: white;
-    text-align: center;
-    margin-bottom: 2rem;
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(10px);
-    position: relative;
-    overflow: hidden;
+  background: var(--primary-gradient);
+  padding:2rem; border-radius:var(--border-radius);
+  color:#fff; text-align:center; margin-bottom:2rem;
+  box-shadow:var(--shadow); backdrop-filter:blur(10px);
+  position:relative; overflow:hidden;
 }
 .main-header::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M20 20c0 11.046-8.954 20-20 20s-20-8.954-20-20 8.954-20 20-20 20 8.954 20 20zm-10 0c0 5.523-4.477 10-10 10s-10-4.477-10-10 4.477-10 10-10 10 4.477 10 10z'/%3E%3C/g%3E%3C/svg%3E");
+  content:''; position:absolute; top:0; left:0; right:0; bottom:0;
+  background:url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M20 20c0 11.046-8.954 20-20 20s-20-8.954-20-20 8.954-20 20-20 20 8.954 20 20zm-10 0c0 5.523-4.477 10-10 10s-10-4.477-10-10 4.477-10 10-10 10 4.477 10 10z'/%3E%3C/g%3E%3C/svg%3E");
 }
-.main-header h1 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    position: relative;
-    z-index: 1;
-}
-.main-header p {
-    font-size: 1.1rem;
-    opacity: 0.9;
-    position: relative;
-    z-index: 1;
-}
-/* Containers com glassmorphism */
+.main-header h1 { font-size:2.5rem; font-weight:700; z-index:1; }
+.main-header p { font-size:1.1rem; opacity:0.9; z-index:1; }
+/* Containers */
 .chat-container, .sidebar-section {
-    background: var(--glass-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--border-radius);
-    padding: 1.5rem;
-    margin: 1rem 0;
-    box-shadow: var(--shadow);
+  background: var(--glass-bg); backdrop-filter:blur(10px);
+  border:1px solid var(--glass-border); border-radius:var(--border-radius);
+  padding:1.5rem; margin:1rem 0; box-shadow:var(--shadow);
 }
-.chat-container {
-    min-height: 400px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
-}
-/* Caixas de status melhoradas */
-.success-box, .warning-box, .info-box {
-    padding: 1.2rem;
-    border-radius: var(--border-radius);
-    color: white;
-    text-align: center;
-    margin: 1rem 0;
-    box-shadow: var(--shadow);
-    font-weight: 600;
-    position: relative;
-    overflow: hidden;
-}
-.success-box {
-    background: var(--success-gradient);
-}
-.warning-box {
-    background: var(--warning-gradient);
-}
-.info-box {
-    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-}
-/* Animação para as caixas */
-.success-box::before, .warning-box::before, .info-box::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
-    transform: rotate(-45deg);
-    animation: shine 3s infinite;
-}
-@keyframes shine {
-    0% { transform: translateX(-100%) translateY(-100%) rotate(-45deg); }
-    100% { transform: translateX(100%) translateY(100%) rotate(-45deg); }
-}
-/* File items melhorados */
-.file-item {
-    background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(240,240,240,0.9) 100%);
-    padding: 1rem;
-    border-radius: 12px;
-    margin: 0.8rem 0;
-    border-left: 4px solid var(--primary-gradient);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    transition: all 0.3s ease;
-}
-.file-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-}
-/* Botões modernos */
+.chat-container { min-height:400px; background:linear-gradient(135deg,rgba(255,255,255,0.1) 0%,rgba(255,255,255,0.05) 100%); }
+/* Buttons */
 .stButton > button {
-    background: var(--primary-gradient) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 12px !important;
-    padding: 0.8rem 1.5rem !important;
-    font-weight: 600 !important;
-    font-size: 0.95rem !important;
-    transition: all 0.3s ease !important;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+  background:var(--primary-gradient)!important;
+  color:#fff!important; border:none!important;
+  border-radius:12px!important; padding:0.8rem 1.5rem!important;
+  font-weight:600!important; font-size:0.95rem!important;
+  box-shadow:0 4px 15px rgba(102,126,234,0.4)!important;
 }
 .stButton > button:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6) !important;
+  transform:translateY(-2px)!important;
+  box-shadow:0 8px 25px rgba(102,126,234,0.6)!important;
 }
-/* Upload zone melhorada */
-.upload-zone {
-    border: 2px dashed #667eea;
-    border-radius: var(--border-radius);
-    padding: 2rem;
-    text-align: center;
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
-    margin: 1rem 0;
-    transition: all 0.3s ease;
-}
-.upload-zone:hover {
-    border-color: #764ba2;
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-}
-/* Login container melhorado */
-.login-container {
-    max-width: 450px;
-    margin: 2rem auto;
-    padding: 2.5rem;
-    background: var(--glass-bg);
-    backdrop-filter: blur(15px);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow);
-}
-/* Chat messages melhoradas */
-.stChatMessage {
-    background: rgba(255, 255, 255, 0.7) !important;
-    backdrop-filter: blur(10px) !important;
-    border-radius: 15px !important;
-    padding: 1.2rem !important;
-    margin: 0.8rem 0 !important;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
-    border: 1px solid rgba(255, 255, 255, 0.2) !important;
-}
-/* Metrics cards */
-.metric-card {
-    background: var(--glass-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--border-radius);
-    padding: 1.5rem;
-    text-align: center;
-    box-shadow: var(--shadow);
-    transition: all 0.3s ease;
-}
-.metric-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 35px rgba(31, 38, 135, 0.5);
-}
-/* Loading spinner personalizado */
-.loading-spinner {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(255,255,255,.3);
-    border-radius: 50%;
-    border-top-color: #fff;
-    animation: spin 1s ease-in-out infinite;
-}
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-/* Scrollbar personalizada */
-::-webkit-scrollbar {
-    width: 8px;
-}
-::-webkit-scrollbar-track {
-    background: rgba(255,255,255,0.1);
-    border-radius: 10px;
-}
-::-webkit-scrollbar-thumb {
-    background: var(--primary-gradient);
-    border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #5a6fd8 0%, #6b5b95 100%);
-}
+/* Scrollbar */
+::-webkit-scrollbar { width:8px; }
+::-webkit-scrollbar-track { background:rgba(255,255,255,0.1); border-radius:10px; }
+::-webkit-scrollbar-thumb { background:var(--primary-gradient); border-radius:10px; }
+::-webkit-scrollbar-thumb:hover { background:linear-gradient(135deg,#5a6fd8 0%,#6b5b95 100%); }
 </style>
 """, unsafe_allow_html=True)
 
+# Configurações iniciais
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
+TESSERACT_PATH  = os.environ.get("TESSERACT_PATH")  or st.secrets.get("TESSERACT_PATH", "")
+
+if OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+if TESSERACT_PATH and os.path.exists(TESSERACT_PATH):
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+
+# Configurar proxies via env
+http_proxy  = os.environ.get("HTTP_PROXY")  or os.environ.get("http_proxy")
+https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+PROXIES = {}
+if http_proxy or https_proxy:
+    PROXIES = {"http": http_proxy, "https": https_proxy}
+    logger.info(f"Usando proxy: {PROXIES}")
+
+# ===== DatabaseManager =====
 class DatabaseManager:
-    """Gerenciador de conexões com banco de dados melhorado."""
-    
+    """Gerenciador de conexões com banco de dados."""
     def __init__(self):
         self.connection_params = self._parse_database_url()
 
     def _parse_database_url(self) -> Optional[dict]:
-        """
-        Faz o parse da URL do banco de dados. Se a variável de ambiente ou secret
-        DATABASE_URL não estiver definida, usa um default. Em caso de porta inválida,
-        utiliza 9898 como padrão.
-        """
-        default_db_url = (
+        default = (
             "postgres://postgres:"
             "kNL6exzv6Y3HYomX4Etgpb2fqtatWIuzKh5OYozkM9NkayOywHe1i1jfyvijgS3G"
             "@185.173.110.61:9898/postgres"
         )
-        # Pega do ambiente ou secrets, ou então o default
-        db_url = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", default_db_url)
+        db_url = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", default)
         if not db_url:
             logger.warning("DATABASE_URL não encontrada")
             return None
-
         try:
             parsed = urlparse(db_url)
-            # Tenta converter a porta; em caso de erro usa 9898
             try:
                 port = parsed.port
             except ValueError:
                 port = 9898
-
             params = {
                 "host":     parsed.hostname,
                 "port":     int(port or 9898),
                 "database": parsed.path.lstrip("/"),
                 "user":     parsed.username,
-                "password": parsed.password,
+                "password": parsed.password
             }
-            # Valida parâmetros essenciais
             if not all([params["host"], params["database"], params["user"]]):
                 raise ValueError("Parâmetros de conexão incompletos")
-
-            logger.info(f"Conexão configurada para: {params['host']}:{params['port']}/{params['database']}")
+            logger.info(f"Conexão: {params['host']}:{params['port']}/{params['database']}")
             return params
-
         except Exception as e:
-            logger.error(f"Erro ao fazer parse da DATABASE_URL: {e}")
-            st.error(f"❌ Erro na configuração do banco: {e}")
+            logger.error(f"Erro parse DATABASE_URL: {e}")
+            st.error(f"❌ Configuração do banco: {e}")
             return None
-
-
 
     @contextmanager
     def get_connection(self):
-        """Context manager para conexões seguras"""
         if not self.connection_params:
             yield None
             return
@@ -321,162 +158,132 @@ class DatabaseManager:
             conn = psycopg2.connect(**self.connection_params)
             yield conn
         except psycopg2.Error as e:
-            logger.error(f"Erro de conexão com PostgreSQL: {e}")
+            logger.error(f"Erro conexão PostgreSQL: {e}")
             st.error(f"❌ Erro de conexão: {e}")
-            yield None
-        except Exception as e:
-            logger.error(f"Erro inesperado na conexão: {e}")
-            st.error(f"❌ Erro inesperado: {e}")
             yield None
         finally:
             if conn:
                 conn.close()
 
     def create_tables(self) -> bool:
-        """Criar tabelas com estrutura melhorada"""
         commands = [
             """
             CREATE TABLE IF NOT EXISTS file_storage (
-                id SERIAL PRIMARY KEY,
-                filename VARCHAR(255) NOT NULL,
-                filedata BYTEA NOT NULL,
-                upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                file_size INTEGER,
-                file_type VARCHAR(50),
-                file_hash VARCHAR(64) UNIQUE,
-                created_by VARCHAR(100) DEFAULT 'system'
-            )
+              id SERIAL PRIMARY KEY,
+              filename VARCHAR(255) NOT NULL,
+              filedata BYTEA NOT NULL,
+              upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              file_size INTEGER,
+              file_type VARCHAR(50),
+              file_hash VARCHAR(64) UNIQUE,
+              created_by VARCHAR(100) DEFAULT 'system'
+            );
             """,
             """
             CREATE TABLE IF NOT EXISTS chat_sessions (
-                id SERIAL PRIMARY KEY,
-                session_id VARCHAR(255) UNIQUE NOT NULL,
-                historico JSONB,
-                vectorstore_data BYTEA,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                session_name VARCHAR(255),
-                is_active BOOLEAN DEFAULT TRUE
-            )
+              id SERIAL PRIMARY KEY,
+              session_id VARCHAR(255) UNIQUE NOT NULL,
+              historico JSONB,
+              vectorstore_data BYTEA,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              session_name VARCHAR(255),
+              is_active BOOLEAN DEFAULT TRUE
+            );
             """,
             """
             CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP,
-                is_active BOOLEAN DEFAULT TRUE
-            )
+              id SERIAL PRIMARY KEY,
+              username VARCHAR(50) UNIQUE NOT NULL,
+              password_hash VARCHAR(255) NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              last_login TIMESTAMP,
+              is_active BOOLEAN DEFAULT TRUE
+            );
             """,
-            """
-            CREATE INDEX IF NOT EXISTS idx_file_storage_hash ON file_storage(file_hash);
-            CREATE INDEX IF NOT EXISTS idx_chat_sessions_active ON chat_sessions(is_active, updated_at);
-            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE is_active = TRUE;
-            """
+            "CREATE INDEX IF NOT EXISTS idx_file_storage_hash ON file_storage(file_hash);",
+            "CREATE INDEX IF NOT EXISTS idx_chat_sessions_active ON chat_sessions(is_active, updated_at);",
+            "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE is_active = TRUE;"
         ]
         with self.get_connection() as conn:
             if not conn:
                 return False
             try:
                 with conn.cursor() as cur:
-                    for command in commands:
-                        cur.execute(command)
+                    for cmd in commands:
+                        cur.execute(cmd)
                 conn.commit()
-                logger.info("Tabelas criadas/atualizadas com sucesso")
+                logger.info("Tabelas criadas/atualizadas")
                 return True
             except Exception as e:
-                logger.error(f"Erro ao criar tabelas: {e}")
-                st.error(f"❌ Erro ao criar tabelas: {e}")
+                logger.error(f"Erro criar tabelas: {e}")
+                st.error(f"❌ Erro criar tabelas: {e}")
                 return False
 
-# Inicializar gerenciador de banco
 db_manager = DatabaseManager()
 
-# Resto do seu código continua igual...
-# (mantém o restante do seu código original, após essa parte)
-
+# ===== FileProcessor =====
 class FileProcessor:
-    """Processador de arquivos melhorado"""
-    
+    """Processador de arquivos."""
     @staticmethod
-    def format_file_size(bytes_size: int) -> str:
-        """Formatar tamanho do arquivo"""
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if bytes_size < 1024.0:
-                return f"{bytes_size:.1f} {unit}"
-            bytes_size /= 1024.0
-        return f"{bytes_size:.1f} TB"
-    
+    def format_file_size(size: int) -> str:
+        for unit in ["B", "KB", "MB", "GB"]:
+            if size < 1024.0:
+                return f"{size:.1f} {unit}"
+            size /= 1024.0
+        return f"{size:.1f} TB"
+
     @staticmethod
     def process_file(file) -> List[Document]:
-        """Processar arquivo com tratamento de erro melhorado"""
         if not LANGCHAIN_AVAILABLE:
             st.error("❌ LangChain não disponível")
             return []
-            
-        documents = []
         ext = file.name.split(".")[-1].lower()
-        
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
             tmp.write(file.getbuffer())
             tmp_path = tmp.name
-        
+        docs: List[Document] = []
         try:
             if ext == "pdf":
                 loader = PyMuPDFLoader(tmp_path)
-                documents = loader.load()
-            elif ext in ["docx", "doc"]:
+                docs = loader.load()
+            elif ext in ("docx", "doc"):
                 loader = Docx2txtLoader(tmp_path)
-                documents = loader.load()
+                docs = loader.load()
             elif ext == "csv":
-                loader = CSVLoader(tmp_path, encoding='utf-8')
-                documents = loader.load()
-            elif ext in ["png", "jpg", "jpeg"]:
-                try:
-                    image = Image.open(tmp_path)
-                    text = pytesseract.image_to_string(image, lang='por+eng')
-                    if text.strip():
-                        documents = [Document(
-                            page_content=text, 
-                            metadata={"source": file.name, "type": "image_ocr"}
-                        )]
-                    else:
-                        st.warning(f"⚠️ Nenhum texto encontrado na imagem {file.name}")
-                except Exception as e:
-                    st.warning(f"⚠️ OCR falhou para {file.name}: {str(e)}")
+                loader = CSVLoader(tmp_path, encoding="utf-8")
+                docs = loader.load()
+            elif ext in ("png", "jpg", "jpeg"):
+                img = Image.open(tmp_path)
+                text = pytesseract.image_to_string(img, lang="por+eng")
+                if text.strip():
+                    docs = [Document(page_content=text,
+                                     metadata={"source": file.name, "type": "image_ocr"})]
+                else:
+                    st.warning(f"⚠️ Nenhum texto em {file.name}")
             else:
-                st.error(f"❌ Tipo de arquivo não suportado: {ext}")
-                
+                st.error(f"❌ Tipo não suportado: {ext}")
         except Exception as e:
-            logger.error(f"Erro ao processar {file.name}: {e}")
-            st.error(f"❌ Erro ao processar {file.name}: {str(e)}")
+            logger.error(f"Erro processar {file.name}: {e}")
+            st.error(f"❌ Erro processar {file.name}: {e}")
         finally:
-            try:
-                os.remove(tmp_path)
-            except:
-                pass
-        
-        return documents
+            try: os.remove(tmp_path)
+            except: pass
+        return docs
 
+# ===== AuthManager =====
 class AuthManager:
-    """Gerenciador de autenticação melhorado"""
-    
+    """Gerenciador de autenticação."""
     @staticmethod
     def check_password() -> bool:
-        """Verificação de senha melhorada"""
-        def password_entered():
-            username = st.session_state.get("username", "").strip()
-            password = st.session_state.get("password", "")
-            
-            # Verificação simples (em produção, usar hash)
-            if username == "Hisoka" and password == "Hisoka123#":
+        def on_submit():
+            u = st.session_state.get("username", "").strip()
+            p = st.session_state.get("password", "")
+            if u == "Hisoka" and p == "Hisoka123#":
                 st.session_state["password_correct"] = True
-                st.session_state["authenticated_user"] = username
-                # Limpar campos sensíveis
-                for key in ["password", "username"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                st.session_state["authenticated_user"] = u
+                for k in ("username", "password"):
+                    st.session_state.pop(k, None)
             else:
                 st.session_state["password_correct"] = False
 
@@ -484,552 +291,262 @@ class AuthManager:
             st.session_state["password_correct"] = False
 
         if not st.session_state["password_correct"]:
-            col1, col2, col3 = st.columns([1, 2, 1])
-            
-            with col2:
+            c1, c2, c3 = st.columns([1, 2, 1])
+            with c2:
                 st.markdown('<div class="login-container">', unsafe_allow_html=True)
                 st.markdown("# 🔐 AI Chat Login")
-                st.markdown("### Acesso Seguro ao Sistema")
-                st.markdown("---")
-                
-                with st.form("login_form"):
-                    st.text_input(
-                        "👤 Usuário", 
-                        key="username", 
-                        placeholder="Digite seu usuário",
-                        help="Digite suas credenciais de acesso"
-                    )
-                    st.text_input(
-                        "🔒 Senha", 
-                        type="password", 
-                        key="password", 
-                        placeholder="Digite sua senha"
-                    )
-                    submitted = st.form_submit_button("🚀 Entrar", use_container_width=True)
-                    
-                    if submitted:
-                        password_entered()
-                
-                if st.session_state.get("password_correct") is False:
-                    st.markdown(
-                        '<div class="warning-box">😕 Credenciais incorretas. Tente novamente.</div>', 
-                        unsafe_allow_html=True
-                    )
-                
+                with st.form("login"):
+                    st.text_input("👤 Usuário", key="username")
+                    st.text_input("🔒 Senha", key="password", type="password")
+                    st.form_submit_button("🚀 Entrar", on_click=on_submit)
+                if st.session_state["password_correct"] is False:
+                    st.markdown('<div class="warning-box">😕 Credenciais incorretas.</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
-            
             return False
         return True
-    
+
     @staticmethod
     def logout():
-        """Logout seguro"""
-        keys_to_keep = ['password_correct']  # Chaves que devem ser mantidas após logout
-        for key in list(st.session_state.keys()):
-            if key not in keys_to_keep:
-                del st.session_state[key]
+        keep = ["password_correct"]
+        for k in list(st.session_state.keys()):
+            if k not in keep:
+                del st.session_state[k]
         st.session_state["password_correct"] = False
         st.rerun()
 
-# Carregar configurações
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
-TESSERACT_PATH = os.environ.get("TESSERACT_PATH") or st.secrets.get("TESSERACT_PATH", "")
-
-# Configurar API Key do OpenAI
-if OPENAI_API_KEY:
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-
-# Configurar Tesseract
-if TESSERACT_PATH and os.path.exists(TESSERACT_PATH):
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-
-# Verificar autenticação
+# Autenticação e DB
 if not AuthManager.check_password():
     st.stop()
-
-# Criar tabelas
 db_manager.create_tables()
 
-# Header principal
+# Header
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 AI Chat Assistant Pro</h1>
-    <p>Converse inteligentemente com seus documentos usando IA avançada</p>
+  <h1>🤖 AI Chat Assistant Pro</h1>
+  <p>Converse inteligentemente com seus documentos</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Verificar configurações essenciais
+# Verificações
 if not OPENAI_API_KEY:
-    st.markdown(
-        '<div class="warning-box">⚠️ OPENAI_API_KEY não configurada. Verifique suas variáveis de ambiente.</div>', 
-        unsafe_allow_html=True
-    )
-    st.stop()
-
+    st.error("⚠️ OPENAI_API_KEY não configurada."); st.stop()
 if not LANGCHAIN_AVAILABLE:
-    st.markdown(
-        '<div class="warning-box">⚠️ LangChain não disponível. Instale as dependências necessárias.</div>', 
-        unsafe_allow_html=True
-    )
-    st.stop()
+    st.error("⚠️ LangChain não disponível."); st.stop()
 
-# Barra superior com informações do usuário
+# Top bar
 col1, col2 = st.columns([4, 1])
 with col1:
     user = st.session_state.get("authenticated_user", "Usuário")
-    st.markdown(f'<div class="success-box">✅ Bem-vindo, {user}! Sistema operacional.</div>', unsafe_allow_html=True)
+    st.success(f"✅ Bem-vindo, {user}!")
 with col2:
-    if st.button("🚪 Sair", use_container_width=True, help="Fazer logout do sistema"):
+    if st.button("🚪 Sair"):
         AuthManager.logout()
 
-# Inicializar estado da sessão
+# Sessões
 if "sessoes" not in st.session_state:
     st.session_state["sessoes"] = {}
-
 if "sessao_atual" not in st.session_state:
-    nova_sessao = f"Sessao_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    st.session_state["sessoes"][nova_sessao] = {
-        "historico": [],
-        "vectorstore": None,
-        "nome": "Nova Conversa"
-    }
-    st.session_state["sessao_atual"] = nova_sessao
+    sid = datetime.now().strftime("Sessao_%Y%m%d_%H%M%S")
+    st.session_state["sessoes"][sid] = {"historico": [], "vectorstore": None, "nome": "Nova Conversa"}
+    st.session_state["sessao_atual"] = sid
 
 def criar_nova_sessao():
-    """Criar nova sessão de chat"""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    nova_sessao = f"Sessao_{timestamp}"
-    st.session_state["sessoes"][nova_sessao] = {
-        "historico": [],
-        "vectorstore": None,
-        "nome": f"Chat {datetime.now().strftime('%H:%M')}"
-    }
-    st.session_state["sessao_atual"] = nova_sessao
+    ts = datetime.now().strftime("Sessao_%Y%m%d_%H%M%S")
+    st.session_state["sessoes"][ts] = {"historico": [], "vectorstore": None, "nome": f"Chat {datetime.now().strftime('%H:%M')}"}
+    st.session_state["sessao_atual"] = ts
     st.rerun()
 
-def criar_vectorstore(documentos: List[Document]) -> Optional[Any]:
-    """Criar vectorstore com configurações otimizadas"""
-    if not documentos or not LANGCHAIN_AVAILABLE:
-        return None
-    
-    try:
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len,
-            separators=["\n\n", "\n", " ", ""]
-        )
-        chunks = splitter.split_documents(documentos)
-        
-        if not chunks:
-            st.warning("⚠️ Nenhum conteúdo válido encontrado nos documentos")
-            return None
-        
-        embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-        vectorstore = FAISS.from_documents(chunks, embeddings)
-        
-        logger.info(f"Vectorstore criado com {len(chunks)} chunks")
-        return vectorstore
-        
-    except Exception as e:
-        logger.error(f"Erro ao criar vectorstore: {e}")
-        st.error(f"❌ Erro ao criar índice de busca: {str(e)}")
-        return None
-
-# Sidebar melhorada
+# Sidebar
 with st.sidebar:
-    # Gerenciamento de sessões
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
     st.markdown("### 💬 Sessões de Chat")
-    
-    sessoes_keys = list(st.session_state["sessoes"].keys())
-    sessao_atual = st.session_state["sessao_atual"]
-
-    if sessoes_keys:
-        opcoes_sessoes = []
-        for key in sessoes_keys:
-            nome = st.session_state["sessoes"][key].get("nome", key)
-            opcoes_sessoes.append((key, nome))
-        
-        # Selectbox personalizado
-        indices = [opt[0] for opt in opcoes_sessoes]
-        nomes = [opt[1] for opt in opcoes_sessoes]
-        
-        try:
-            idx_atual = indices.index(sessao_atual)
-        except ValueError:
-            idx_atual = 0
-        
-        sessao_selecionada = st.selectbox(
-            "🔄 Sessão Ativa:",
-            options=indices,
-            index=idx_atual,
-            format_func=lambda x: f"📝 {st.session_state['sessoes'][x].get('nome', x)}"
-        )
-        
-        if sessao_selecionada != sessao_atual:
-            st.session_state["sessao_atual"] = sessao_selecionada
+    keys = list(st.session_state["sessoes"].keys())
+    current = st.session_state["sessao_atual"]
+    if keys:
+        sel = st.selectbox("🔄 Sessão Ativa:", keys, index=keys.index(current),
+                           format_func=lambda x: st.session_state["sessoes"][x]["nome"])
+        if sel != current:
+            st.session_state["sessao_atual"] = sel
             st.rerun()
-
-    # Botões de ação
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("➕ Nova", use_container_width=True, help="Criar nova sessão"):
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("➕ Nova"):
             criar_nova_sessao()
-    with col2:
-        if st.button("🗑️ Limpar", use_container_width=True, help="Limpar sessão atual"):
-            if sessao_atual in st.session_state["sessoes"]:
-                st.session_state["sessoes"][sessao_atual]["historico"] = []
-                st.rerun()
-    
+    with c2:
+        if st.button("🗑️ Limpar"):
+            st.session_state["sessoes"][current]["historico"] = []
+            st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Upload de arquivos
+    # Upload
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
     st.markdown("### 📤 Upload de Documentos")
-    
-    st.markdown('<div class="upload-zone">', unsafe_allow_html=True)
-    st.markdown("**Arraste arquivos aqui ou clique para selecionar**")
-    uploaded_files = st.file_uploader(
-        "📁 Escolher arquivos",
-        type=["pdf", "docx", "doc", "csv", "png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-        key=f"uploader_{sessao_atual}",
-        help="Formatos suportados: PDF, Word, CSV, Imagens (PNG, JPG)"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if uploaded_files:
-        st.markdown(f'<div class="info-box">📁 {len(uploaded_files)} arquivo(s) selecionado(s)</div>', unsafe_allow_html=True)
-        
-        if st.button("🔄 Processar Documentos", use_container_width=True, type="primary"):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            todos_docs = []
-            total_files = len(uploaded_files)
-            
-            for i, file in enumerate(uploaded_files):
-                status_text.text(f"📖 Processando: {file.name}")
-                progress_bar.progress((i + 1) / total_files)
-                
-                try:
-                    docs = FileProcessor.process_file(file)
-                    todos_docs.extend(docs)
-                    
-                    # Salvar arquivo no banco (se disponível)
-                    # Implementar salvamento aqui se necessário
-                    
-                except Exception as e:
-                    st.error(f"❌ Erro ao processar {file.name}: {e}")
-
-            if todos_docs:
-                status_text.text("🔍 Criando índice de busca inteligente...")
-                vectorstore = criar_vectorstore(todos_docs)
-                
-                if vectorstore:
-                    st.session_state["sessoes"][sessao_atual]["vectorstore"] = vectorstore
-                    progress_bar.progress(1.0)
-                    status_text.text("")
-                    st.markdown(f'<div class="success-box">🎉 {len(todos_docs)} documentos processados!</div>', unsafe_allow_html=True)
-                    st.balloons()
-                else:
-                    st.error("❌ Falha ao criar índice de busca")
+    uploaded = st.file_uploader("Escolher arquivos", type=["pdf","docx","doc","csv","png","jpg","jpeg"],
+                                accept_multiple_files=True, key=f"up_{current}")
+    if uploaded:
+        st.info(f"{len(uploaded)} arquivo(s) selecionado(s)")
+        if st.button("🔄 Processar Documentos"):
+            bar = st.progress(0); status = st.empty()
+            all_docs: List[Document] = []
+            for i, f in enumerate(uploaded):
+                status.text(f"Processando {f.name}")
+                bar.progress((i+1)/len(uploaded))
+                docs = FileProcessor.process_file(f)
+                all_docs.extend(docs)
+            if all_docs:
+                status.text("Criando índice...")
+                # criar_vectorstore abaixo
+                bar.progress(1.0)
+                st.session_state["sessoes"][current]["vectorstore"] = criar_vectorstore(all_docs)
+                st.success(f"{len(all_docs)} docs processados!")
+                st.balloons()
             else:
-                st.error("❌ Nenhum documento foi processado com sucesso")
-    
+                st.error("❌ Nenhum documento processado")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Estatísticas da sessão
+    # Estatísticas
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
     st.markdown("### 📊 Estatísticas")
-    
-    sessao_data = st.session_state["sessoes"][st.session_state["sessao_atual"]]
-    historico = sessao_data["historico"]
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("💬 Mensagens", len(historico))
-    with col2:
-        vectorstore_status = "✅ Ativo" if sessao_data.get("vectorstore") else "❌ Inativo"
-        st.metric("🧠 IA", vectorstore_status)
-    
+    sess = st.session_state["sessoes"][current]
+    hist = sess["historico"]
+    st.metric("💬 Mensagens", len(hist))
+    st.metric("🔍 Busca IA", "✅" if sess["vectorstore"] else "❌")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Área principal do chat
+# Funções de IA
+def criar_vectorstore(docs: List[Document]) -> Optional[Any]:
+    if not docs or not LANGCHAIN_AVAILABLE:
+        return None
+    try:
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        chunks = splitter.split_documents(docs)
+        if not chunks:
+            st.warning("⚠️ Sem conteúdo válido")
+            return None
+
+        # Embeddings sem proxies explícitos
+        emb_kwargs = {}
+        if PROXIES:
+            emb_kwargs["client_kwargs"] = {"proxies": PROXIES}
+
+        embeddings = OpenAIEmbeddings(model="text-embedding-3-small", **emb_kwargs)
+        vs = FAISS.from_documents(chunks, embeddings)
+        logger.info(f"Vectorstore criado com {len(chunks)} chunks")
+        return vs
+    except Exception as e:
+        logger.error(f"Erro criar vectorstore: {e}")
+        st.error(f"❌ Erro ao criar índice: {e}")
+        return None
+
+def create_llm() -> ChatOpenAI:
+    """Instancia ChatOpenAI usando gpt-4o-mini e proxies se configurados."""
+    kwargs = {"temperature": 0.3, "model_name": "gpt-4o-mini", "max_tokens": 1000}
+    if PROXIES:
+        kwargs["client_kwargs"] = {"proxies": PROXIES}
+    return ChatOpenAI(**kwargs)
+
+# Chat area
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+sess = st.session_state["sessoes"][st.session_state["sessao_atual"]]
+historico: List[Tuple[str,str]] = sess["historico"]
 
-# Título da sessão atual
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.markdown("## 💬 Área de Conversa")
-with col2:
-    if st.button("🔄 Recarregar", help="Recarregar conversa"):
-        st.rerun()
-
-# Exibir histórico de chat
+# Exibir histórico
 if historico:
-    for i, (pergunta, resposta) in enumerate(historico):
-        with st.chat_message("user", avatar="👤"):
-            st.write(pergunta)
-        with st.chat_message("assistant", avatar="🤖"):
-            st.write(resposta)
+    for q, a in historico:
+        with st.chat_message("user"):
+            st.write(q)
+        with st.chat_message("assistant"):
+            st.write(a)
 else:
-    # Mensagem de boas-vindas
     st.markdown("""
-    <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 16px; margin: 2rem 0;">
-        <h3>👋 Olá! Como posso ajudar hoje?</h3>
-        <p>Faça upload de documentos e comece a conversar comigo sobre eles!</p>
-        <p><strong>Dicas:</strong></p>
-        <ul style="text-align: left; display: inline-block; margin-top: 1rem;">
-            <li>📄 Envie PDFs, Word, CSV ou imagens</li>
-            <li>🔍 Faça perguntas específicas sobre o conteúdo</li>
-            <li>💡 Peça resumos ou análises detalhadas</li>
-            <li>🌟 Use linguagem natural para melhores resultados</li>
-        </ul>
+    <div style="text-align:center; padding:2rem; background:rgba(118,75,162,0.1); border-radius:16px;">
+      <h3>👋 Olá! Envie documentos e converse com eles.</h3>
     </div>
     """, unsafe_allow_html=True)
 
-# Input de pergunta
-pergunta = st.chat_input("💭 Digite sua pergunta aqui...", key="chat_input")
-
+# Pergunta
+pergunta = st.chat_input("Digite sua pergunta...")
 if pergunta:
-    # Adicionar pergunta ao chat
-    with st.chat_message("user", avatar="👤"):
+    with st.chat_message("user"):
         st.write(pergunta)
-
-    # Processar resposta
-    with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("🧠 Processando sua pergunta..."):
+    with st.chat_message("assistant"):
+        with st.spinner("🧠 Processando..."):
             try:
-                vectorstore = sessao_data.get("vectorstore")
-                
+                vectorstore = sess["vectorstore"]
                 if vectorstore and LANGCHAIN_AVAILABLE:
-                    # Chat com contexto dos documentos
-                    retriever = vectorstore.as_retriever(
-                        search_type="similarity",
-                        search_kwargs={"k": 4}  # Aumentar número de documentos relevantes
-                    )
-                    
-                    llm = ChatOpenAI(
-                        temperature=0.3, 
-                        model_name="gpt-4o-mini",  # Modelo mais eficiente
-                        max_tokens=1000
-                    )
-                    
-                    memory = ConversationBufferMemory(
-                        memory_key="chat_history",
-                        return_messages=True,
-                        output_key="answer"
-                    )
-                    
-                    # Adicionar histórico à memória
-                    for hist_pergunta, hist_resposta in historico[-5:]:  # Últimas 5 interações
-                        memory.chat_memory.add_user_message(hist_pergunta)
-                        memory.chat_memory.add_ai_message(hist_resposta)
-                    
-                    chain = ConversationalRetrievalChain.from_llm(
-                        llm=llm,
-                        retriever=retriever,
-                        memory=memory,
-                        verbose=False,
-                        return_source_documents=True
-                    )
-                    
-                    resultado = chain({"question": pergunta})
-                    resposta = resultado["answer"]
-                    
-                    # Mostrar fontes se disponíveis
-                    if resultado.get("source_documents"):
-                        with st.expander("📚 Fontes consultadas", expanded=False):
-                            for i, doc in enumerate(resultado["source_documents"][:3]):
-                                st.write(f"**Fonte {i+1}:** {doc.metadata.get('source', 'Desconhecida')}")
-                                st.write(f"```{doc.page_content[:200]}...```")
-                    
+                    retr = vectorstore.as_retriever(search_kwargs={"k": 4})
+                    llm = create_llm()
+                    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
+                    # popular memória
+                    for pq, pa in historico[-5:]:
+                        memory.chat_memory.add_user_message(pq)
+                        memory.chat_memory.add_ai_message(pa)
+                    chain = ConversationalRetrievalChain.from_llm(llm=llm, retriever=retr, memory=memory)
+                    result = chain({"question": pergunta})
+                    resposta = result["answer"]
+                    sources = result.get("source_documents", [])
+                    if sources:
+                        with st.expander("📚 Fontes"):
+                            for i, doc in enumerate(sources[:3], 1):
+                                st.write(f"**Fonte {i}:** {doc.metadata.get('source','?')}")
+                                st.write(doc.page_content[:200] + "...")
                 else:
-                    # Chat sem contexto
-                    if LANGCHAIN_AVAILABLE:
-                        llm = ChatOpenAI(
-                            temperature=0.7, 
-                            model_name="gpt-4o-mini",
-                            max_tokens=800
-                        )
-                        
-                        # Criar contexto com histórico recente
-                        contexto = ""
-                        if historico:
-                            contexto = "Histórico recente da conversa:\n"
-                            for hist_p, hist_r in historico[-3:]:
-                                contexto += f"Usuário: {hist_p}\nAssistente: {hist_r}\n\n"
-                        
-                        prompt_completo = f"{contexto}Pergunta atual: {pergunta}"
-                        resposta_obj = llm.invoke(prompt_completo)
-                        resposta = resposta_obj.content if hasattr(resposta_obj, 'content') else str(resposta_obj)
-                    else:
-                        resposta = "❌ Sistema indisponível. Verifique as configurações."
-
+                    llm = create_llm()
+                    # contexto simples
+                    contexto = ""
+                    for pq, pa in historico[-3:]:
+                        contexto += f"Usuário: {pq}\nAssistente: {pa}\n"
+                    prompt = f"{contexto}\nPergunta: {pergunta}"
+                    resp_obj = llm.invoke(prompt)
+                    resposta = getattr(resp_obj, "content", str(resp_obj))
                 st.write(resposta)
                 historico.append((pergunta, resposta))
-                
             except Exception as e:
-                error_msg = f"❌ Erro ao processar: {str(e)}"
-                logger.error(f"Erro no chat: {e}")
-                st.error(error_msg)
-                historico.append((pergunta, error_msg))
-
+                msg = f"❌ Erro ao processar: {e}"
+                logger.error(msg)
+                st.error(msg)
+                historico.append((pergunta, msg))
 st.markdown('</div>', unsafe_allow_html=True)
-
-# Painel de controle inferior
-st.markdown("---")
-st.markdown("### 🎛️ Painel de Controle")
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-    st.metric(
-        label="📈 Sessões Ativas", 
-        value=len(st.session_state["sessoes"]),
-        help="Número total de sessões de chat"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col2:
-    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-    st.metric(
-        label="💬 Mensagens", 
-        value=len(historico),
-        help="Mensagens na sessão atual"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col3:
-    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-    vectorstore_status = "✅ Ativo" if sessao_data.get("vectorstore") else "❌ Inativo"
-    st.metric(
-        label="🔍 Busca IA", 
-        value=vectorstore_status,
-        help="Status do sistema de busca inteligente"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col4:
-    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-    api_status = "✅ OK" if OPENAI_API_KEY else "❌ Erro"
-    st.metric(
-        label="🔑 API OpenAI", 
-        value=api_status,
-        help="Status da conexão com OpenAI"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# Funcionalidades avançadas
-with st.expander("⚙️ Configurações Avançadas", expanded=False):
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**🎯 Parâmetros do Modelo**")
-        temperature = st.slider(
-            "Criatividade", 
-            min_value=0.0, 
-            max_value=1.0, 
-            value=0.3, 
-            step=0.1,
-            help="Controla a criatividade das respostas"
-        )
-        
-        max_tokens = st.slider(
-            "Tamanho da Resposta", 
-            min_value=100, 
-            max_value=2000, 
-            value=1000, 
-            step=100,
-            help="Limite máximo de tokens por resposta"
-        )
-    
-    with col2:
-        st.markdown("**🔍 Configurações de Busca**")
-        search_k = st.slider(
-            "Documentos Relevantes", 
-            min_value=1, 
-            max_value=10, 
-            value=4,
-            help="Número de documentos a consultar"
-        )
-        
-        chunk_size = st.slider(
-            "Tamanho do Chunk", 
-            min_value=500, 
-            max_value=2000, 
-            value=1000, 
-            step=250,
-            help="Tamanho dos fragmentos de texto"
-        )
 
 # Exportar conversa
 if historico:
     st.markdown("---")
     st.markdown("### 📥 Exportar Conversa")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("📄 Exportar como Texto", use_container_width=True):
-            texto_conversa = f"Conversa - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
-            for i, (p, r) in enumerate(historico, 1):
-                texto_conversa += f"Pergunta {i}: {p}\n"
-                texto_conversa += f"Resposta {i}: {r}\n\n"
-            
-            st.download_button(
-                label="💾 Baixar Conversa",
-                data=texto_conversa,
-                file_name=f"conversa_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain"
-            )
-    
-    with col2:
-        if st.button("📊 Exportar como JSON", use_container_width=True):
-            dados_conversa = {
-                "sessao": st.session_state["sessao_atual"],
-                "timestamp": datetime.now().isoformat(),
-                "total_mensagens": len(historico),
-                "conversa": [
-                    {"pergunta": p, "resposta": r, "indice": i} 
-                    for i, (p, r) in enumerate(historico, 1)
-                ]
-            }
-            
-            st.download_button(
-                label="💾 Baixar JSON",
-                data=json.dumps(dados_conversa, indent=2, ensure_ascii=False),
-                file_name=f"conversa_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
-    
-    with col3:
-        if st.button("🧹 Limpar Histórico", use_container_width=True):
+    c1, c2, c3 = st.columns(3)
+    texto = "\n".join(f"Q{i+1}: {q}\nA{i+1}: {a}" for i, (q, a) in enumerate(historico))
+    with c1:
+        st.download_button("💾 TXT", data=texto, file_name=f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+    with c2:
+        data = {
+            "sessao": st.session_state["sessao_atual"],
+            "timestamp": datetime.now().isoformat(),
+            "conversa": [{"pergunta":q, "resposta":a} for q, a in historico]
+        }
+        st.download_button("💾 JSON", data=json.dumps(data, ensure_ascii=False, indent=2),
+                           file_name=f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with c3:
+        if st.button("🧹 Limpar Histórico"):
             st.session_state["sessoes"][st.session_state["sessao_atual"]]["historico"] = []
-            st.success("✅ Histórico limpo!")
+            st.success("Histórico limpo!")
             st.rerun()
 
-# Footer informativo
+# Footer
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; padding: 1rem; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 16px; margin-top: 2rem;">
-    <p><strong>🤖 AI Chat Assistant Pro v2.0</strong></p>
-    <p>Sistema inteligente de conversação com documentos • Powered by OpenAI GPT-4</p>
-    <p><small>💡 Dica: Para melhores resultados, seja específico em suas perguntas e use documentos bem estruturados.</small></p>
+<div style="text-align:center; padding:1rem; background:rgba(118,75,162,0.1); border-radius:16px;">
+  <p><strong>🤖 AI Chat Assistant Pro v2.0</strong></p>
+  <p>Powered by OpenAI GPT-4</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Debug info (apenas para desenvolvimento)
+# Debug
 if st.secrets.get("DEBUG_MODE", False):
-    with st.expander("🔧 Debug Info", expanded=False):
+    with st.expander("🔧 Debug"):
         st.json({
             "sessao_atual": st.session_state["sessao_atual"],
             "total_sessoes": len(st.session_state["sessoes"]),
-            "vectorstore_ativo": bool(sessao_data.get("vectorstore")),
-            "langchain_disponivel": LANGCHAIN_AVAILABLE,
-            "openai_key_configurada": bool(OPENAI_API_KEY),
-            "total_mensagens": len(historico)
+            "vectorstore": bool(sess["vectorstore"]),
+            "langchain": LANGCHAIN_AVAILABLE,
+            "openai_key": bool(OPENAI_API_KEY),
+            "mensagens": len(historico)
         })
