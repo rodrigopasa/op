@@ -12,13 +12,13 @@ try:
     from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, CSVLoader
     from langchain_community.embeddings import OpenAIEmbeddings
     from langchain_community.vectorstores import FAISS
-    from langchain_community.chat_models import ChatOpenAI
 except ImportError:
     from langchain.document_loaders import PyMuPDFLoader, Docx2txtLoader, CSVLoader
     from langchain.embeddings import OpenAIEmbeddings
     from langchain.vectorstores import FAISS
-    from langchain.chat_models import ChatOpenAI
 
+# Atualização para o uso do pacote langchain-openai
+from langchain_openai import ChatOpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
@@ -293,7 +293,7 @@ if pergunta:
                     resposta = chain({"question": pergunta})["answer"]
                 else:
                     llm = ChatOpenAI(temperature=0, model_name="gpt-4")
-                    resposta = llm.predict(pergunta)
+                    resposta = llm.invoke(pergunta)
 
                 st.write(resposta)
                 historico.append((pergunta, resposta))
