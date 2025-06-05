@@ -51,7 +51,6 @@ st.markdown("""
     padding: 0;
     box-sizing: border-box;
 }
-
 /* Variáveis CSS */
 :root {
     --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -62,7 +61,6 @@ st.markdown("""
     --shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
     --border-radius: 16px;
 }
-
 /* Header principal com glassmorphism */
 .main-header {
     background: var(--primary-gradient);
@@ -76,7 +74,6 @@ st.markdown("""
     position: relative;
     overflow: hidden;
 }
-
 .main-header::before {
     content: '';
     position: absolute;
@@ -86,7 +83,6 @@ st.markdown("""
     bottom: 0;
     background: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M20 20c0 11.046-8.954 20-20 20s-20-8.954-20-20 8.954-20 20-20 20 8.954 20 20zm-10 0c0 5.523-4.477 10-10 10s-10-4.477-10-10 4.477-10 10-10 10 4.477 10 10z'/%3E%3C/g%3E%3C/svg%3E");
 }
-
 .main-header h1 {
     font-size: 2.5rem;
     font-weight: 700;
@@ -94,14 +90,12 @@ st.markdown("""
     position: relative;
     z-index: 1;
 }
-
 .main-header p {
     font-size: 1.1rem;
     opacity: 0.9;
     position: relative;
     z-index: 1;
 }
-
 /* Containers com glassmorphism */
 .chat-container, .sidebar-section {
     background: var(--glass-bg);
@@ -112,12 +106,10 @@ st.markdown("""
     margin: 1rem 0;
     box-shadow: var(--shadow);
 }
-
 .chat-container {
     min-height: 400px;
     background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
 }
-
 /* Caixas de status melhoradas */
 .success-box, .warning-box, .info-box {
     padding: 1.2rem;
@@ -130,19 +122,15 @@ st.markdown("""
     position: relative;
     overflow: hidden;
 }
-
 .success-box {
     background: var(--success-gradient);
 }
-
 .warning-box {
     background: var(--warning-gradient);
 }
-
 .info-box {
     background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
 }
-
 /* Animação para as caixas */
 .success-box::before, .warning-box::before, .info-box::before {
     content: '';
@@ -155,12 +143,10 @@ st.markdown("""
     transform: rotate(-45deg);
     animation: shine 3s infinite;
 }
-
 @keyframes shine {
     0% { transform: translateX(-100%) translateY(-100%) rotate(-45deg); }
     100% { transform: translateX(100%) translateY(100%) rotate(-45deg); }
 }
-
 /* File items melhorados */
 .file-item {
     background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(240,240,240,0.9) 100%);
@@ -171,12 +157,10 @@ st.markdown("""
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     transition: all 0.3s ease;
 }
-
 .file-item:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0,0,0,0.15);
 }
-
 /* Botões modernos */
 .stButton > button {
     background: var(--primary-gradient) !important;
@@ -189,12 +173,10 @@ st.markdown("""
     transition: all 0.3s ease !important;
     box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
 }
-
 .stButton > button:hover {
     transform: translateY(-2px) !important;
     box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6) !important;
 }
-
 /* Upload zone melhorada */
 .upload-zone {
     border: 2px dashed #667eea;
@@ -205,12 +187,10 @@ st.markdown("""
     margin: 1rem 0;
     transition: all 0.3s ease;
 }
-
 .upload-zone:hover {
     border-color: #764ba2;
     background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
 }
-
 /* Login container melhorado */
 .login-container {
     max-width: 450px;
@@ -222,7 +202,6 @@ st.markdown("""
     border-radius: var(--border-radius);
     box-shadow: var(--shadow);
 }
-
 /* Chat messages melhoradas */
 .stChatMessage {
     background: rgba(255, 255, 255, 0.7) !important;
@@ -233,7 +212,6 @@ st.markdown("""
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
     border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
-
 /* Metrics cards */
 .metric-card {
     background: var(--glass-bg);
@@ -245,12 +223,10 @@ st.markdown("""
     box-shadow: var(--shadow);
     transition: all 0.3s ease;
 }
-
 .metric-card:hover {
     transform: translateY(-5px);
     box-shadow: 0 12px 35px rgba(31, 38, 135, 0.5);
 }
-
 /* Loading spinner personalizado */
 .loading-spinner {
     display: inline-block;
@@ -261,26 +237,21 @@ st.markdown("""
     border-top-color: #fff;
     animation: spin 1s ease-in-out infinite;
 }
-
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
-
 /* Scrollbar personalizada */
 ::-webkit-scrollbar {
     width: 8px;
 }
-
 ::-webkit-scrollbar-track {
     background: rgba(255,255,255,0.1);
     border-radius: 10px;
 }
-
 ::-webkit-scrollbar-thumb {
     background: var(--primary-gradient);
     border-radius: 10px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(135deg, #5a6fd8 0%, #6b5b95 100%);
 }
@@ -294,45 +265,46 @@ class DatabaseManager:
         self.connection_params = self._parse_database_url()
     
     def _parse_database_url(self) -> Optional[dict]:
-        """Parse da URL do banco de dados com tratamento de erro melhorado"""
+        """Parse da URL do banco de dados com tratamento de erro melhorado e porta padrão 9898 se ausente"""
         db_url = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", "")
-        
         if not db_url:
             logger.warning("DATABASE_URL não encontrada")
             return None
-            
         try:
             # Parse da URL do banco
             parsed = urlparse(db_url)
-            
-            # Extrair componentes
+            # Extrair porta e definir padrão 9898 se ausente
+            port_value = parsed.port
+            if port_value is None:
+                port = 9898
+            elif isinstance(port_value, str):
+                port = int(port_value)
+            else:
+                port = port_value
+            # Montar os parâmetros de conexão
             params = {
                 'host': parsed.hostname,
-                'port': parsed.port or 9898,
+                'port': port,
                 'database': parsed.path.lstrip('/'),
                 'user': parsed.username,
                 'password': parsed.password
             }
-            
             # Validar parâmetros essenciais
             if not all([params['host'], params['database'], params['user']]):
                 raise ValueError("Parâmetros de conexão incompletos")
-                
             logger.info(f"Conexão configurada para: {params['host']}:{params['port']}/{params['database']}")
             return params
-            
         except Exception as e:
             logger.error(f"Erro ao fazer parse da DATABASE_URL: {e}")
             st.error(f"❌ Erro na configuração do banco: {e}")
             return None
-    
+
     @contextmanager
     def get_connection(self):
         """Context manager para conexões seguras"""
         if not self.connection_params:
             yield None
             return
-            
         conn = None
         try:
             conn = psycopg2.connect(**self.connection_params)
@@ -348,7 +320,7 @@ class DatabaseManager:
         finally:
             if conn:
                 conn.close()
-    
+
     def create_tables(self) -> bool:
         """Criar tabelas com estrutura melhorada"""
         commands = [
@@ -392,11 +364,9 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE is_active = TRUE;
             """
         ]
-        
         with self.get_connection() as conn:
             if not conn:
                 return False
-                
             try:
                 with conn.cursor() as cur:
                     for command in commands:
@@ -411,6 +381,9 @@ class DatabaseManager:
 
 # Inicializar gerenciador de banco
 db_manager = DatabaseManager()
+
+# Resto do seu código continua igual...
+# (mantém o restante do seu código original, após essa parte)
 
 class FileProcessor:
     """Processador de arquivos melhorado"""
