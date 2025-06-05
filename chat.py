@@ -27,29 +27,28 @@ TESSERACT_PATH = st.secrets["TESSERACT_PATH"]
 # Configurar o caminho do Tesseract
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
-# Autenticação
-# Hash da senha gerado previamente para "Hisoka123#"
+# Configurações de autenticação
+names = ["Hisoka"]
+usernames = ["Hisoka"]
 hashed_passwords = [
-    "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"
+    "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"  # hash de "Hisoka123#"
 ]
 
+# Inicializando o autenticador com assinatura correta
 authenticator = stauth.Authenticate(
-    ["Hisoka"],                # nomes
-    ["Hisoka"],                # usernames
-    hashed_passwords,           # hashes de senha
-    "cookie_name",              # nome do cookie
-    "signature_key",            # sua chave de assinatura
-    cookie_expiry_days=30       # duração do cookie
+    names,
+    usernames,
+    hashed_passwords,
+    "cookie_name",        # nome do cookie
+    "signature_key",      # sua chave de assinatura
+    cookie_expiry_days=30 # duração do cookie em dias
 )
 
 # Login
 name, authentication_status, username = authenticator.login("Login", "main")
-
-# Proteja toda a aplicação após o login
 if not authentication_status:
     st.write("Usuário ou senha incorretos")
     st.stop()
-
 # Aqui começa o restante do seu código, que só será executado após login
 # ---------------------------------------------
 # Inicializar sessões
