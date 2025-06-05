@@ -1,17 +1,22 @@
 import streamlit as st
 import streamlit_authenticator as stauth
-import psycopg2
 import os
 import tempfile
 from PIL import Image
 import pytesseract
 from datetime import datetime
 
-# Importações atualizadas de langchain_community
-from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, CSVLoader
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.chat_models import ChatOpenAI
+# Importações do langchain
+try:
+    from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, CSVLoader
+    from langchain_community.embeddings import OpenAIEmbeddings
+    from langchain_community.vectorstores import FAISS
+    from langchain_community.chat_models import ChatOpenAI
+except ImportError:
+    from langchain.document_loaders import PyMuPDFLoader, Docx2txtLoader, CSVLoader
+    from langchain.embeddings import OpenAIEmbeddings
+    from langchain.vectorstores import FAISS
+    from langchain.chat_models import ChatOpenAI
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
@@ -22,168 +27,255 @@ from langchain.docstore.document import Document
 st.set_page_config(page_title="Chat com Arquivos", layout="wide")
 st.title("📚 Chat com Arquivos + Memória de Sessão")
 
-# Carregar variáveis secrets
-DATABASE_URL = st.secrets.get("DATABASE_URL", "")
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
-TESSERACT_PATH = st.secrets.get("TESSERACT_PATH", "/usr/bin/tesseract")
+# Carregar variáveis de ambiente
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
+TESSERACT_PATH = os.environ.get("TESSERACT_PATH") or st.secrets.get("TESSERACT_PATH", "/usr/bin/tesseract")
+AUTH_KEY = os.environ.get("AUTH_KEY") or st.secrets.get("AUTH_KEY", "chave_padrao_123")
 
 # Configurar API Key do OpenAI
-if OPENAI_API_KEY:
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-else:
-    st.error("Chave API do OpenAI não encontrada. Configure nas Secrets.")
+if not OPENAI_API_KEY:
+    st.error("⚠️ OPENAI_API_KEY não encontrada. Configure nas variáveis de ambiente.")
     st.stop()
 
-# Configurar o caminho do Tesseract
-if TESSERACT_PATH:
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
-# Autenticação - Corrigida
+# Configurar Tesseract se disponível
+try:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+except:
+    st.warning("OCR não disponível. Upload de imagens pode não funcionar.")
+
+# Configuração de autenticação
+names = ["Hisoka"]
+usernames = ["Hisoka"]
+passwords = ["$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"]  # hash de "Hisoka123#"
+
+# Criar autenticador
 authenticator = stauth.Authenticate(
-    ["Hisoka"],  # nomes
-    ["Hisoka"],  # usernames
-    ["$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"],  # hash da senha
-    "cookie_name",  # nome do cookie
-    "signature_key",  # sua chave de assinatura
-    cookie_expiry_days=30  # duração do cookie
+    names,
+    usernames,
+    passwords,
+    "chat_arquivos_cookie",
+    AUTH_KEY,
+    cookie_expiry_days=30
 )
 
 # Login
 name, authentication_status, username = authenticator.login("Login", "main")
 
 if authentication_status == False:
-    st.error("Usuário ou senha incorretos")
+    st.error("❌ Usuário ou senha incorretos")
     st.stop()
 elif authentication_status == None:
-    st.warning("Por favor, insira seu nome de usuário e senha")
+    st.warning("⚠️ Por favor, insira seu nome de usuário e senha")
     st.stop()
 
-# Mensagem de boas-vindas
-st.success(f"Bem-vindo, {name}!")
+# Interface após login bem-sucedido
+col1, col2 = st.columns([6, 1])
+with col1:
+    st.success(f"✅ Bem-vindo, {name}!")
+with col2:
+    authenticator.logout("Logout", "main")
 
-# Aqui começa o restante do código após login bem-sucedido
-# ---------------------------------------------
-
-# Inicializar sessões
+# Inicializar estado da sessão
 if "sessoes" not in st.session_state:
     st.session_state.sessoes = {}
+
 if "sessao_atual" not in st.session_state:
     nova_sessao = f"Sessao_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    st.session_state.sessoes[nova_sessao] = {"historico": [], "vectorstore": None}
+    st.session_state.sessoes[nova_sessao] = {
+        "historico": [],
+        "vectorstore": None
+    }
     st.session_state.sessao_atual = nova_sessao
 
-# Funções
+# Funções auxiliares
 def criar_nova_sessao():
     nova_sessao = f"Sessao_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    st.session_state.sessoes[nova_sessao] = {"historico": [], "vectorstore": None}
+    st.session_state.sessoes[nova_sessao] = {
+        "historico": [],
+        "vectorstore": None
+    }
     st.session_state.sessao_atual = nova_sessao
     st.rerun()
 
-def carregar_arquivos(uploaded_files):
+def processar_arquivo(file):
+    """Processa um único arquivo e retorna documentos"""
     documentos = []
-    for file in uploaded_files:
-        ext = file.name.split(".")[-1].lower()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-            tmp.write(file.read())
-            tmp_path = tmp.name
-
-        try:
-            if ext == "pdf":
-                loader = PyMuPDFLoader(tmp_path)
-                documentos.extend(loader.load())
-            elif ext == "docx":
-                loader = Docx2txtLoader(tmp_path)
-                documentos.extend(loader.load())
-            elif ext == "csv":
-                loader = CSVLoader(tmp_path)
-                documentos.extend(loader.load())
-            elif ext in ["png", "jpg", "jpeg"]:
+    ext = file.name.split(".")[-1].lower()
+    
+    # Criar arquivo temporário
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+        tmp.write(file.read())
+        tmp_path = tmp.name
+    
+    try:
+        if ext == "pdf":
+            loader = PyMuPDFLoader(tmp_path)
+            documentos = loader.load()
+        elif ext in ["docx", "doc"]:
+            loader = Docx2txtLoader(tmp_path)
+            documentos = loader.load()
+        elif ext == "csv":
+            loader = CSVLoader(tmp_path, encoding='utf-8')
+            documentos = loader.load()
+        elif ext in ["png", "jpg", "jpeg"]:
+            try:
                 image = Image.open(tmp_path)
                 text = pytesseract.image_to_string(image)
-                documentos.append(Document(page_content=text))
-        except Exception as e:
-            st.error(f"Erro ao processar {file.name}: {str(e)}")
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+                if text.strip():
+                    documentos = [Document(page_content=text, metadata={"source": file.name})]
+            except:
+                st.warning(f"⚠️ OCR falhou para {file.name}")
+    except Exception as e:
+        st.error(f"❌ Erro em {file.name}: {str(e)}")
+    finally:
+        # Limpar arquivo temporário
+        try:
+            os.remove(tmp_path)
+        except:
+            pass
+    
     return documentos
 
 def criar_vectorstore(documentos):
+    """Cria vectorstore a partir dos documentos"""
     if not documentos:
         return None
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    docs_divididos = splitter.split_documents(documentos)
+    
+    # Dividir documentos em chunks
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        length_function=len
+    )
+    chunks = splitter.split_documents(documentos)
+    
+    # Criar embeddings e vectorstore
     embeddings = OpenAIEmbeddings()
-    return FAISS.from_documents(docs_divididos, embeddings)
+    vectorstore = FAISS.from_documents(chunks, embeddings)
+    
+    return vectorstore
 
-def mostrar_documentos(vectorstore):
-    if vectorstore:
-        st.sidebar.markdown("### 📄 Documentos carregados")
-        # Método correto para acessar documentos no FAISS
-        st.sidebar.markdown("Documentos processados e indexados com sucesso!")
-
-# Interface de sessões
-st.sidebar.header("💬 Sessões")
-sessao_nome = st.sidebar.selectbox(
-    "Escolha uma sessão:",
-    list(st.session_state.sessoes.keys()),
-    index=list(st.session_state.sessoes.keys()).index(st.session_state.sessao_atual)
-)
-if sessao_nome != st.session_state.sessao_atual:
-    st.session_state.sessao_atual = sessao_nome
-
-if st.sidebar.button("➕ Nova Sessão"):
-    criar_nova_sessao()
-
-# Upload de arquivos
-uploaded_files = st.sidebar.file_uploader(
-    "📤 Envie arquivos", type=["pdf", "docx", "csv", "png", "jpg", "jpeg"], accept_multiple_files=True
-)
-
-if uploaded_files:
-    with st.spinner("Processando arquivos..."):
-        documentos = carregar_arquivos(uploaded_files)
-        if documentos:
-            vectorstore = criar_vectorstore(documentos)
-            st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = vectorstore
-            st.success(f"{len(documentos)} arquivos processados!")
-
-# Resetar documentos
-if st.sidebar.button("🗑️ Resetar Documentos"):
-    st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = None
-    st.success("Vectorstore resetado.")
-
-# Mostrar documentos carregados
-vectorstore_atual = st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"]
-mostrar_documentos(vectorstore_atual)
-
-# Chat
-st.markdown("---")
-st.markdown("## 💬 Chat")
-query = st.text_input("Digite sua pergunta:", placeholder="Ex: Qual o resumo dos documentos?")
-
-if query:
-    historico = st.session_state.sessoes[st.session_state.sessao_atual]["historico"]
+# Interface lateral
+with st.sidebar:
+    st.header("💬 Gerenciar Sessões")
+    
+    # Seletor de sessões
+    if st.session_state.sessoes:
+        sessao_selecionada = st.selectbox(
+            "Sessão ativa:",
+            options=list(st.session_state.sessoes.keys()),
+            index=list(st.session_state.sessoes.keys()).index(st.session_state.sessao_atual)
+        )
+        
+        if sessao_selecionada != st.session_state.sessao_atual:
+            st.session_state.sessao_atual = sessao_selecionada
+            st.rerun()
+    
+    # Botão nova sessão
+    if st.button("➕ Nova Sessão", use_container_width=True):
+        criar_nova_sessao()
+    
+    st.divider()
+    
+    # Upload de arquivos
+    st.header("📤 Carregar Arquivos")
+    uploaded_files = st.file_uploader(
+        "Escolha os arquivos",
+        type=["pdf", "docx", "doc", "csv", "png", "jpg", "jpeg"],
+        accept_multiple_files=True
+    )
+    
+    if uploaded_files:
+        if st.button("🔄 Processar Arquivos", use_container_width=True):
+            with st.spinner("Processando..."):
+                todos_docs = []
+                
+                # Processar cada arquivo
+                for file in uploaded_files:
+                    docs = processar_arquivo(file)
+                    todos_docs.extend(docs)
+                
+                if todos_docs:
+                    # Criar vectorstore
+                    vectorstore = criar_vectorstore(todos_docs)
+                    st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = vectorstore
+                    st.success(f"✅ {len(todos_docs)} documentos processados!")
+                else:
+                    st.error("❌ Nenhum documento foi processado")
+    
+    # Status e reset
+    st.divider()
+    vectorstore_atual = st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"]
     
     if vectorstore_atual:
-        retriever = vectorstore_atual.as_retriever(search_type="similarity", search_kwargs={"k": 3})
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        chain = ConversationalRetrievalChain.from_llm(
-            llm=ChatOpenAI(temperature=0, model_name="gpt-4"),
-            retriever=retriever,
-            memory=memory
-        )
-        resposta = chain.run(query)
+        st.success("✅ Documentos carregados")
+        if st.button("🗑️ Limpar Tudo", use_container_width=True):
+            st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = None
+            st.session_state.sessoes[st.session_state.sessao_atual]["historico"] = []
+            st.rerun()
     else:
-        # Se não houver documentos, use apenas o ChatOpenAI
-        llm = ChatOpenAI(temperature=0, model_name="gpt-4")
-        resposta = llm.predict(query)
+        st.info("📄 Nenhum documento carregado")
+
+# Área principal - Chat
+st.header("💬 Chat")
+
+# Mostrar histórico
+historico = st.session_state.sessoes[st.session_state.sessao_atual]["historico"]
+for pergunta, resposta in historico:
+    with st.chat_message("user"):
+        st.write(pergunta)
+    with st.chat_message("assistant"):
+        st.write(resposta)
+
+# Input de pergunta
+pergunta = st.chat_input("Digite sua pergunta...")
+
+if pergunta:
+    # Adicionar pergunta ao chat
+    with st.chat_message("user"):
+        st.write(pergunta)
     
-    historico.append((query, resposta))
-    
-    # Mostrar histórico
-    for pergunta, resp in historico:
-        with st.chat_message("user"):
-            st.markdown(pergunta)
-        with st.chat_message("assistant"):
-            st.markdown(resp)
+    # Processar resposta
+    with st.chat_message("assistant"):
+        with st.spinner("Pensando..."):
+            try:
+                vectorstore = st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"]
+                
+                if vectorstore:
+                    # Chat com documentos
+                    retriever = vectorstore.as_retriever(
+                        search_type="similarity",
+                        search_kwargs={"k": 3}
+                    )
+                    
+                    # Criar chain
+                    llm = ChatOpenAI(temperature=0, model_name="gpt-4")
+                    memory = ConversationBufferMemory(
+                        memory_key="chat_history",
+                        return_messages=True
+                    )
+                    
+                    chain = ConversationalRetrievalChain.from_llm(
+                        llm=llm,
+                        retriever=retriever,
+                        memory=memory,
+                        verbose=False
+                    )
+                    
+                    # Obter resposta
+                    resposta = chain({"question": pergunta})["answer"]
+                else:
+                    # Chat sem documentos
+                    llm = ChatOpenAI(temperature=0, model_name="gpt-4")
+                    resposta = llm.predict(pergunta)
+                
+                # Mostrar resposta
+                st.write(resposta)
+                
+                # Adicionar ao histórico
+                historico.append((pergunta, resposta))
+                
+            except Exception as e:
+                st.error(f"❌ Erro: {str(e)}")
