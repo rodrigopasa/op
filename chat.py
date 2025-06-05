@@ -29,11 +29,13 @@ TESSERACT_PATH = st.secrets["TESSERACT_PATH"]
 pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"
 
 # Autenticação
-names = ["Admin"]
-usernames = ["admin"]
-passwords = ["admin123"]  # Use hashes em produção
+names = ["Hisoka"]
+usernames = ["Hisoka"]
+hashed_passwords = [
+    "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"
+]
 
-hashed_passwords = stauth.Hasher(passwords).generate()
+import streamlit as st
 
 authenticator = stauth.Authenticate(
     names, usernames, hashed_passwords,
@@ -41,10 +43,10 @@ authenticator = stauth.Authenticate(
 )
 
 name, authentication_status, username = authenticator.login("Login", "main")
-
-if not authentication_status:
-    st.error("Usuário ou senha incorretos")
-    st.stop()
+if authentication_status:
+    st.write(f"Bem-vindo, {name}")
+else:
+    st.write("Usuário ou senha incorretos")
 
 # Inicializar sessões
 if "sessoes" not in st.session_state:
