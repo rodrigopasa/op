@@ -45,19 +45,17 @@ try:
 except:
     st.warning("OCR não disponível. Upload de imagens pode não funcionar.")
 
-# Configuração de autenticação - NOVA SINTAXE
+# Configuração de autenticação - ESTRUTURA CORRETA
 credentials = {
-    "credentials": {
-        "usernames": {
-            "Hisoka": {
-                "name": "Hisoka",
-                "password": "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"  # hash de "Hisoka123#"
-            }
+    "usernames": {
+        "Hisoka": {
+            "name": "Hisoka",
+            "password": "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"  # hash de "Hisoka123#"
         }
     }
 }
 
-# Criar autenticador com a nova sintaxe
+# Criar autenticador
 authenticator = stauth.Authenticate(
     credentials,
     "chat_arquivos_cookie",
@@ -66,7 +64,7 @@ authenticator = stauth.Authenticate(
 )
 
 # Login
-name, authentication_status, username = authenticator.login("Login", "main")
+name, authentication_status, username = authenticator.login()
 
 if authentication_status == False:
     st.error("❌ Usuário ou senha incorretos")
@@ -80,7 +78,7 @@ col1, col2 = st.columns([6, 1])
 with col1:
     st.success(f"✅ Bem-vindo, {name}!")
 with col2:
-    authenticator.logout("Logout", "main")
+    authenticator.logout()
 
 # Inicializar estado da sessão
 if "sessoes" not in st.session_state:
