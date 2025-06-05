@@ -20,22 +20,19 @@ st.set_page_config(page_title="Chat com Arquivos", layout="wide")
 st.title("📚 Chat com Arquivos + Memória de Sessão")
 
 # Carregar variáveis secrets
-# Carregar a variável de ambiente
 DATABASE_URL = st.secrets["DATABASE_URL"]
 API_KEY = st.secrets["OPENAI_API_KEY"]
 TESSERACT_PATH = st.secrets["TESSERACT_PATH"]
 
 # Configurar o caminho do Tesseract
-pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
 # Autenticação
 names = ["Hisoka"]
 usernames = ["Hisoka"]
 hashed_passwords = [
-    "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"
+    "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"  # hash de "Hisoka123#"
 ]
-
-import streamlit as st
 
 authenticator = stauth.Authenticate(
     names, usernames, hashed_passwords,
@@ -43,11 +40,14 @@ authenticator = stauth.Authenticate(
 )
 
 name, authentication_status, username = authenticator.login("Login", "main")
-if authentication_status:
-    st.write(f"Bem-vindo, {name}")
-else:
-    st.write("Usuário ou senha incorretos")
 
+# Proteja toda a aplicação após o login bem-sucedido
+if not authentication_status:
+    st.write("Usuário ou senha incorretos")
+    st.stop()
+
+# Aqui começa o restante do seu código, que só será executado após login
+# ---------------------------------------------
 # Inicializar sessões
 if "sessoes" not in st.session_state:
     st.session_state.sessoes = {}
@@ -102,9 +102,13 @@ def mostrar_documentos(vectorstore):
         for i, doc in enumerate(docs):
             st.sidebar.markdown(f"**Doc {i+1}:** {doc.page_content[:100]}...")
 
-# Configurações de sessão
+# Interface de sessões
 st.sidebar.header("💬 Sessões")
-sessao_nome = st.sidebar.selectbox("Escolha uma sessão:", list(st.session_state.sessoes.keys()), index=list(st.session_state.sessoes.keys()).index(st.session_state.sessao_atual))
+sessao_nome = st.sidebar.selectbox(
+    "Escolha uma sessão:",
+    list(st.session_state.sessoes.keys()),
+    index=list(st.session_state.sessoes.keys()).index(st.session_state.sessao_atual)
+)
 if sessao_nome != st.session_state.sessao_atual:
     st.session_state.sessao_atual = sessao_nome
 
@@ -112,7 +116,9 @@ if st.sidebar.button("➕ Nova Sessão"):
     criar_nova_sessao()
 
 # Upload de arquivos
-uploaded_files = st.sidebar.file_uploader("📤 Envie arquivos", type=["pdf", "docx", "csv", "png", "jpg", "jpeg"], accept_multiple_files=True)
+uploaded_files = st.sidebar.file_uploader(
+    "📤 Envie arquivos", type=["pdf", "docx", "csv", "png", "jpg", "jpeg"], accept_multiple_files=True
+)
 
 if uploaded_files:
     with st.spinner("Processando arquivos..."):
@@ -126,7 +132,7 @@ if st.sidebar.button("🗑️ Resetar Documentos"):
     st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = None
     st.success("Vectorstore resetado.")
 
-# Exibir documentos carregados
+# Mostrar documentos carregados
 vectorstore_atual = st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"]
 mostrar_documentos(vectorstore_atual)
 
@@ -137,7 +143,10 @@ query = st.text_input("Digite sua pergunta:", placeholder="Ex: Qual o resumo dos
 
 if query:
     historico = st.session_state.sessoes[st.session_state.sessao_atual]["historico"]
-    retriever = vectorstore_atual.as_retriever(search_type="similarity", search_kwargs={"k": 3}) if vectorstore_atual else None
+    retriever = (
+        vectorstore_atual.as_retriever(search_type="similarity", search_kwargs={"k": 3})
+        if vectorstore_atual else None
+    )
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     chain = ConversationalRetrievalChain.from_llm(
         llm=ChatOpenAI(temperature=0, model_name="gpt-4"),
