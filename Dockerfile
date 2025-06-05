@@ -14,10 +14,13 @@ COPY requirements.txt .
 # Atualize o sistema e instale dependências do sistema necessárias
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
+    tesseract-ocr-por \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender-dev \
+    libgomp1 \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Instale as dependências Python
