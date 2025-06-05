@@ -1,6 +1,7 @@
 streamlit
 langchain
-streamlit-authenticator
+langchain_community
 psycopg2-binary
 pytesseract
 Pillow
+streamlit-authenticator
