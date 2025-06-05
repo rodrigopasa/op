@@ -1,7 +1,12 @@
 streamlit
 langchain
 langchain-community
+langchain-openai
+openai
 psycopg2-binary
 pytesseract
 Pillow
-streamlit-authenticator
+pymupdf
+python-docx
+faiss-cpu
+tiktoken
