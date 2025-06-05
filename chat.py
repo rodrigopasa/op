@@ -7,7 +7,7 @@ from datetime import datetime
 import psycopg2
 from psycopg2 import sql
 
-# Importações do langchain
+# Importações do langchain (tenta importar as versões da comunidade, senão as originais)
 try:
     from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, CSVLoader
     from langchain_community.embeddings import OpenAIEmbeddings
@@ -37,10 +37,8 @@ if OPENAI_API_KEY:
     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
 # Configurar Tesseract se disponível
-try:
+if TESSERACT_PATH:
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-except:
-    pass
 
 # Função de conexão com o banco de dados
 def get_db_connection():
@@ -50,52 +48,48 @@ def get_db_connection():
 def insert_file_to_db(filename, filedata):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute(
-        sql.SQL("INSERT INTO file_storage (filename, filedata) VALUES (%s, %s)"),
-        (filename, psycopg2.Binary(filedata))
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        cur.execute(
+            sql.SQL("INSERT INTO file_storage (filename, filedata) VALUES (%s, %s)"),
+            (filename, psycopg2.Binary(filedata))
+        )
+        conn.commit()
+    except Exception as e:
+        st.error(f"Erro ao inserir arquivo no banco: {e}")
+    finally:
+        cur.close()
+        conn.close()
 
 # Sistema de autenticação simples
 def check_password():
     """Retorna True se o usuário inseriu a senha correta."""
-    
     def password_entered():
-        """Verifica se a senha inserida está correta."""
-        if (st.session_state["username"] == "Hisoka" and 
-            st.session_state["password"] == "Hisoka123#"):
+        if (st.session_state.get("username") == "Hisoka" and 
+            st.session_state.get("password") == "Hisoka123#"):
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Remove a senha da sessão
+            del st.session_state["password"]
             del st.session_state["username"]
         else:
             st.session_state["password_correct"] = False
 
-    # Primeira execução ou logout
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
 
-    # Se ainda não está autenticado
     if not st.session_state["password_correct"]:
-        # Formulário de login
         st.title("🔐 Login")
         with st.form("login_form"):
             st.text_input("Usuário", key="username")
             st.text_input("Senha", type="password", key="password")
             st.form_submit_button("Entrar", on_click=password_entered)
-            
-        if "password_correct" in st.session_state and st.session_state["password_correct"] == False:
+        if st.session_state.get("password_correct") is False:
             st.error("😕 Usuário ou senha incorretos")
-            
         return False
-    
     return True
 
 # Função de logout
 def logout():
     st.session_state["password_correct"] = False
-    st.rerun()
+    st.experimental_rerun()
 
 # Verificar autenticação
 if not check_password():
@@ -117,38 +111,37 @@ if not OPENAI_API_KEY:
     st.error("⚠️ OPENAI_API_KEY não encontrada. Configure nas variáveis de ambiente.")
     st.stop()
 
-# Inicializar estado da sessão
+# Inicializar estado da sessão para sessões de chat
 if "sessoes" not in st.session_state:
-    st.session_state.sessoes = {}
+    st.session_state["sessoes"] = {}
 
 if "sessao_atual" not in st.session_state:
     nova_sessao = f"Sessao_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    st.session_state.sessoes[nova_sessao] = {
+    st.session_state["sessoes"][nova_sessao] = {
         "historico": [],
         "vectorstore": None
     }
-    st.session_state.sessao_atual = nova_sessao
+    st.session_state["sessao_atual"] = nova_sessao
 
-# Funções auxiliares
 def criar_nova_sessao():
     nova_sessao = f"Sessao_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    st.session_state.sessoes[nova_sessao] = {
+    st.session_state["sessoes"][nova_sessao] = {
         "historico": [],
         "vectorstore": None
     }
-    st.session_state.sessao_atual = nova_sessao
-    st.rerun()
+    st.session_state["sessao_atual"] = nova_sessao
+    st.experimental_rerun()
 
 def processar_arquivo(file):
-    """Processa um único arquivo e retorna documentos"""
+    """Processa um único arquivo e retorna documentos."""
     documentos = []
     ext = file.name.split(".")[-1].lower()
-    
-    # Criar arquivo temporário
+
+    # Criar arquivo temporário para leitura
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-        tmp.write(file.read())
+        tmp.write(file.getbuffer())
         tmp_path = tmp.name
-    
+
     try:
         if ext == "pdf":
             loader = PyMuPDFLoader(tmp_path)
@@ -168,111 +161,101 @@ def processar_arquivo(file):
             except Exception:
                 st.warning(f"⚠️ OCR não disponível para {file.name}")
     except Exception as e:
-        st.error(f"❌ Erro em {file.name}: {str(e)}")
+        st.error(f"❌ Erro ao processar {file.name}: {str(e)}")
     finally:
-        # Limpar arquivo temporário
         try:
             os.remove(tmp_path)
-        except:
+        except Exception:
             pass
-    
+
     return documentos
 
 def criar_vectorstore(documentos):
-    """Cria vectorstore a partir dos documentos"""
+    """Cria vectorstore a partir dos documentos."""
     if not documentos:
         return None
-    
     try:
-        # Dividir documentos em chunks
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
             length_function=len
         )
         chunks = splitter.split_documents(documentos)
-        
-        # Criar embeddings e vectorstore
         embeddings = OpenAIEmbeddings()
         vectorstore = FAISS.from_documents(chunks, embeddings)
-        
         return vectorstore
     except Exception as e:
         st.error(f"Erro ao criar vectorstore: {str(e)}")
         return None
 
-# Interface lateral
+# Sidebar: gerenciamento de sessões e upload
 with st.sidebar:
     st.header("💬 Gerenciar Sessões")
-    
-    # Seletor de sessões
-    if st.session_state.sessoes:
+    sessoes_keys = list(st.session_state["sessoes"].keys())
+    sessao_atual = st.session_state["sessao_atual"]
+
+    if sessoes_keys:
         sessao_selecionada = st.selectbox(
             "Sessão ativa:",
-            options=list(st.session_state.sessoes.keys()),
-            index=list(st.session_state.sessoes.keys()).index(st.session_state.sessao_atual)
+            options=sessoes_keys,
+            index=sessoes_keys.index(sessao_atual)
         )
-        
-        if sessao_selecionada != st.session_state.sessao_atual:
-            st.session_state.sessao_atual = sessao_selecionada
-            st.rerun()
-    
-    # Botão nova sessão
+        if sessao_selecionada != sessao_atual:
+            st.session_state["sessao_atual"] = sessao_selecionada
+            st.experimental_rerun()
+
     if st.button("➕ Nova Sessão", use_container_width=True):
         criar_nova_sessao()
-    
+
     st.divider()
-    
-    # Upload de arquivos
     st.header("📤 Carregar Arquivos")
     uploaded_files = st.file_uploader(
         "Escolha os arquivos",
         type=["pdf", "docx", "doc", "csv", "png", "jpg", "jpeg"],
         accept_multiple_files=True,
-        key=f"uploader_{st.session_state.sessao_atual}"
+        key=f"uploader_{sessao_atual}"
     )
-    
+
     if uploaded_files:
         if st.button("🔄 Processar Arquivos", use_container_width=True):
             with st.spinner("Processando..."):
                 todos_docs = []
-                
-                # Processar cada arquivo
                 for file in uploaded_files:
-                    # Armazenar no banco de dados
-                    insert_file_to_db(file.name, file.read())
-                    
-                    # Processar arquivo
+                    # Como file.read() esgota o buffer, usamos file.getbuffer() para armazenar e processar
+                    try:
+                        file_bytes = file.getbuffer()
+                        insert_file_to_db(file.name, file_bytes)
+                    except Exception as e:
+                        st.warning(f"Falha ao salvar {file.name} no banco: {e}")
+
                     docs = processar_arquivo(file)
                     todos_docs.extend(docs)
-                
+
                 if todos_docs:
-                    # Criar vectorstore
                     vectorstore = criar_vectorstore(todos_docs)
                     if vectorstore:
-                        st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = vectorstore
+                        st.session_state["sessoes"][sessao_atual]["vectorstore"] = vectorstore
                         st.success(f"✅ {len(todos_docs)} documentos processados!")
                 else:
                     st.error("❌ Nenhum documento foi processado")
-    
-    # Status e reset
+
     st.divider()
-    vectorstore_atual = st.session_state.sessoes[st.session_state.sessao_atual].get("vectorstore")
-    
+    vectorstore_atual = st.session_state["sessoes"][sessao_atual].get("vectorstore")
     if vectorstore_atual:
         st.success("✅ Documentos carregados")
         if st.button("🗑️ Limpar Tudo", use_container_width=True):
-            st.session_state.sessoes[st.session_state.sessao_atual]["vectorstore"] = None
-            st.session_state.sessoes[st.session_state.sessao_atual]["historico"] = []
-            st.rerun()
+            st.session_state["sessoes"][sessao_atual]["vectorstore"] = None
+            st.session_state["sessoes"][sessao_atual]["historico"] = []
+            st.experimental_rerun()
     else:
         st.info("📄 Nenhum documento carregado")
 
-# Área principal - Chat
+# Área principal: chat
 st.header("💬 Chat")
 
-# Mostrar histórico
-historico = st.session_state.sessoes[st.session_state.sessao_atual]["historico"]
+historico = st.session_state["sessoes"][st.session_state["sessao_atual"]]["historico"]
+
+# Exibir histórico
 for pergunta, resposta in historico:
     with st.chat_message("user"):
         st.write(pergunta)
@@ -283,49 +266,36 @@ for pergunta, resposta in historico:
 pergunta = st.chat_input("Digite sua pergunta...")
 
 if pergunta:
-    # Adicionar pergunta ao chat
     with st.chat_message("user"):
         st.write(pergunta)
-    
-    # Processar resposta
+
     with st.chat_message("assistant"):
         with st.spinner("Pensando..."):
             try:
-                vectorstore = st.session_state.sessoes[st.session_state.sessao_atual].get("vectorstore")
-                
+                vectorstore = st.session_state["sessoes"][st.session_state["sessao_atual"]].get("vectorstore")
+
                 if vectorstore:
-                    # Chat com documentos
                     retriever = vectorstore.as_retriever(
                         search_type="similarity",
                         search_kwargs={"k": 3}
                     )
-                    
-                    # Criar chain
                     llm = ChatOpenAI(temperature=0, model_name="gpt-4")
                     memory = ConversationBufferMemory(
                         memory_key="chat_history",
                         return_messages=True
                     )
-                    
                     chain = ConversationalRetrievalChain.from_llm(
                         llm=llm,
                         retriever=retriever,
                         memory=memory,
                         verbose=False
                     )
-                    
-                    # Obter resposta
                     resposta = chain({"question": pergunta})["answer"]
                 else:
-                    # Chat sem documentos
                     llm = ChatOpenAI(temperature=0, model_name="gpt-4")
                     resposta = llm.predict(pergunta)
-                
-                # Mostrar resposta
+
                 st.write(resposta)
-                
-                # Adicionar ao histórico
                 historico.append((pergunta, resposta))
-                
             except Exception as e:
-                st.error(f"❌ Erro: {str(e)}")
+                st.error(f"Erro ao gerar resposta: {str(e)}")
