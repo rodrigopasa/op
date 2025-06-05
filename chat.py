@@ -32,27 +32,23 @@ if TESSERACT_PATH:
 else:
     st.warning("Caminho do Tesseract não definido. Verifique suas Secrets.")
 
-# Autenticação
-# Use o hash gerado previamente para a senha "Hisoka123#"
-hashed_passwords = [
-    "$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"
-]
-
+# Autenticação com assinatura correta e sem duplicidade de argumentos
 authenticator = stauth.Authenticate(
     ["Hisoka"],  # nomes
     ["Hisoka"],  # usernames
-    hashed_passwords,
+    ["$2b$12$KIX0m1x2V1k2a8F7J9jzOeY4Ue8T4k4O5U7oE7K0l1N6r5P7Q8W"],  # hash da senha
     "cookie_name",  # nome do cookie
     "signature_key",  # sua chave de assinatura
-    cookie_expiry_days=30  # duração do cookie
+    cookie_expiry_days=30  # duração do cookie (apenas uma vez)
 )
 
+# Login
 name, authentication_status, username = authenticator.login("Login", "main")
 if not authentication_status:
     st.write("Usuário ou senha incorretos")
     st.stop()
 
-# Início do restante do código após login
+# Aqui começa o restante do seu código, que só será executado após login
 # ---------------------------------------------
 
 # Inicializar sessões
