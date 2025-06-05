@@ -2,10 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instala o Tesseract OCR
-RUN apt-get update && apt-get install -y tesseract-ocr
+# Copie o arquivo requirements.txt primeiro
+COPY requirements.txt .
 
-# Copie seu código
+# Depois copie o restante dos arquivos
 COPY . .
 
 # Instale dependências
